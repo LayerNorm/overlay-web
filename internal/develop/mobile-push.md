@@ -26,15 +26,16 @@ required to obtain an Expo token. No registration is fabricated when unavailable
 ## Producers and eligibility
 
 `convex/lib/mobilePush.ts` wraps new `workspaceNotifications` writes in
-`collaboration/directMessages.ts` and `collaboration/channels.ts`, and new
-unresolved `agentApprovalRequests` in `agents/connectedAgents.ts`. Each write and
-its scheduled action commit atomically. `harness/runs.publishWait` schedules new
+`collaboration/directMessages.ts`, `collaboration/channels.ts` and
+`mcp/agentNetwork.ts` (an absent connected agent's waiting-message notice). Each
+write and its scheduled action commit atomically. Agent approvals are harness waits,
+so they push through the wait producer below. `harness/runs.publishWait` schedules new
 input/approval/stuck waits; idempotent updates and already-resolved records do not
 schedule duplicate alerts. Needs-you here means agent approval/input waits.
 The Work list's derived Needs you filter is not a separate notification producer.
 
 Delivery re-reads the source, workspace, human principal, active membership and
-conversation access. Read activity, resolved waits/approvals, terminal runs,
+conversation access. Read activity, resolved waits, terminal runs,
 deleted conversations, archived/inactive/removed participants and muted
 conversations do not deliver. Mentions-only conversations permit only mentions
 and direct requests for user attention. Preferences use the persisted
