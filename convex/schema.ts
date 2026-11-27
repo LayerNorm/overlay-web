@@ -18,6 +18,14 @@ const runPlanStepValidator = v.object({
 })
 
 export default defineSchema({
+  pushTokens: defineTable({
+    userId: v.string(),
+    expoToken: v.string(),
+    platform: v.union(v.literal('ios'), v.literal('android')),
+    deviceId: v.string(),
+    updatedAt: v.number(),
+    revokedAt: v.optional(v.number()),
+  }).index('by_user', ['userId']).index('by_token', ['expoToken']),
   nativeDeploymentPolicies: defineTable({
     key: v.literal('web'),
     sequence: v.number(),
@@ -641,12 +649,34 @@ export default defineSchema({
       pricingVersion: v.string(),
       metadataJson: v.string(),
     })),
+    // True once the charge is counted in `usageDays`. Rows written before the daily totals existed are counted by
+    // the one-time backfill (`billing/usageTotals:backfillDailyTotals`), which sets it.
+    inDailyTotals: v.optional(v.boolean()),
     createdAt: v.number(),
   })
     .index('by_operationId', ['operationId'])
     .index('by_userId_createdAt', ['userId', 'createdAt'])
     .index('by_userId_billingAccountId', ['userId', 'billingAccountId'])
-    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt']),
+    .index('by_billingAccountId_createdAt', ['billingAccountId', 'createdAt'])
+    .index('by_inDailyTotals', ['inDailyTotals']),
+
+  // What a billing account was charged per UTC day, person, resource and model, so the usage list and spend per
+  // person add up a few rows per day instead of every charge in the period (which outgrew a query's read limit).
+  usageDays: defineTable({
+    billingAccountId: v.string(),
+    /** UTC midnight, ms. */
+    day: v.number(),
+    userId: v.string(),
+    resource: v.string(),
+    /** Set for the `models` resource only; empty otherwise. */
+    modelId: v.string(),
+    cents: v.number(),
+    count: v.number(),
+    tokens: v.number(),
+    seconds: v.number(),
+  })
+    .index('by_account_day_user_resource_model', ['billingAccountId', 'day', 'userId', 'resource', 'modelId'])
+    .index('by_userId', ['userId']),
 
   administrativePrincipals: defineTable({
     userId: v.string(),

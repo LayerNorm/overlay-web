@@ -132,7 +132,7 @@ value, build log, document, ticket, email, or chat.
 <Steps>
 <Step title="Prepare the customer repository">
 Fork or mirror the public
-[LayerNorm/overlay-web](https://github.com/LayerNorm/overlay-web) repository into
+[LayerNorm/overlay](https://github.com/LayerNorm/overlay) repository into
 the customer's GitHub organization. Clone that customer-controlled repository,
 retain the public repository as `upstream`, and branch from an approved
 published release. The example defaults to the tested `v0.1.0-rc.1` release.
@@ -143,7 +143,7 @@ export OVERLAY_RELEASE="${OVERLAY_RELEASE:-v0.1.0-rc.1}"
 
 git clone "$CUSTOMER_REPOSITORY_URL" overlay-web
 cd overlay-web
-git remote add upstream https://github.com/layernorm/overlay-web.git
+git remote add upstream https://github.com/LayerNorm/overlay.git
 git fetch upstream --tags --force
 git checkout -b "release/${OVERLAY_RELEASE#v}-customer.1" "$OVERLAY_RELEASE"
 git push -u origin "release/${OVERLAY_RELEASE#v}-customer.1"

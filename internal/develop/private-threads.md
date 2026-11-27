@@ -38,6 +38,9 @@ bumped.
   cloud computer tools so tool rows look the same.
 - **Keys are checked, never read back.** `setKey` lists the provider's models with the key before storing it; the page
   only learns which providers have a key. Keys are per computer, not per Overlay account.
+- **Keys from the shell are offered, not taken.** Desktop setup lists model keys set in the login shell (`localSetup`,
+  `internal/develop/desktop-web-shell.md`) by variable name and last four characters; *Use this key* checks one with
+  the provider and stores it exactly like `setKey`.
 - **Screenshots are not kept.** A finished turn's screenshot images are dropped from the saved transcript and from what
   later turns send; the tool row stays and the model is told to take a new one.
 - **Stop and quit.** Stop aborts the turn; quitting or signing out stops runs, and the transcript keeps everything up to

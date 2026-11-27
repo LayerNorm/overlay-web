@@ -1,5 +1,5 @@
 export const MARKETING_GITHUB_URL =
-  "https://github.com/LayerNorm/overlay-web";
+  "https://github.com/LayerNorm/overlay";
 export const MARKETING_DISCORD_URL = "https://discord.gg/cag4HPkU6Z";
 export const MARKETING_SALES_URL =
   "https://calendar.app.google/9vucWaH2jSE92mzn8";

@@ -41,7 +41,7 @@ export function AccountPageFrame({
   dark,
   termsHref = '/terms',
   privacyHref = '/privacy',
-  sourceHref = 'https://github.com/LayerNorm/overlay-web',
+  sourceHref = 'https://github.com/LayerNorm/overlay',
 }: AccountPageFrameProps) {
   return (
     <div className="flex min-h-screen w-full flex-col gradient-bg">

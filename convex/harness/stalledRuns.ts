@@ -10,18 +10,22 @@ import { internalAction, internalMutation, internalQuery } from '../_generated/s
 
 const QUIET_MS = 20 * 60_000
 const LOOKBACK_MS = 30 * 24 * 60 * 60_000
-const SCAN_LIMIT = 200
+const PAGE_SIZE = 100
+const MAX_PAGES = 100
 const BATCH_LIMIT = 25
 
-export const listCandidates = internalQuery({
-  args: { now: v.number() },
-  handler: async (ctx, { now }) => {
-    const rows = await ctx.db.query('harnessRuns')
+/**
+ * One page of the quiet window, oldest first. Run status lives in the metadata JSON, so every run in the window is
+ * read; paging keeps each read within Convex's limits however many finished runs sit in front of a stuck one.
+ */
+export const listCandidatesPage = internalQuery({
+  args: { now: v.number(), cursor: v.union(v.string(), v.null()) },
+  handler: async (ctx, { now, cursor }) => {
+    const page = await ctx.db.query('harnessRuns')
       .withIndex('by_updatedAt', (q) => q.gte('updatedAt', now - LOOKBACK_MS).lte('updatedAt', now - QUIET_MS))
-      .order('desc').take(SCAN_LIMIT)
+      .paginate({ cursor, numItems: PAGE_SIZE })
     const candidates: Array<{ runId: string; workflowRunId: string; updatedAt: number }> = []
-    for (const row of rows) {
-      if (candidates.length >= BATCH_LIMIT) break
+    for (const row of page.page) {
       let metadata: { status?: string; workflowRunId?: string }
       try {
         metadata = JSON.parse(row.metadataJson) as typeof metadata
@@ -33,7 +37,7 @@ export const listCandidates = internalQuery({
       if (alerted?.workflowRunId === metadata.workflowRunId) continue
       candidates.push({ runId: row.runId, workflowRunId: metadata.workflowRunId, updatedAt: row.updatedAt })
     }
-    return candidates
+    return { candidates, isDone: page.isDone, continueCursor: page.continueCursor }
   },
 })
 
@@ -53,7 +57,16 @@ export const sweep = internalAction({
   args: {},
   handler: async (ctx) => {
     const { internal } = await import('../_generated/api')
-    const candidates = await ctx.runQuery(internal.harness.stalledRuns.listCandidates, { now: Date.now() })
+    const now = Date.now()
+    const candidates: Array<{ runId: string; workflowRunId: string }> = []
+    let cursor: string | null = null
+    for (let page = 0; page < MAX_PAGES && candidates.length < BATCH_LIMIT; page++) {
+      const result: { candidates: Array<{ runId: string; workflowRunId: string }>; isDone: boolean; continueCursor: string } =
+        await ctx.runQuery(internal.harness.stalledRuns.listCandidatesPage, { now, cursor })
+      candidates.push(...result.candidates)
+      if (result.isDone) break
+      cursor = result.continueCursor
+    }
     const baseUrl = process.env.OVERLAY_BFF_URL?.replace(/\/$/, '')
     const secret = process.env.INTERNAL_API_SECRET
     if (!candidates.length || !baseUrl || !secret) return null
@@ -62,7 +75,7 @@ export const sweep = internalAction({
       const response = await fetchAppCallback(`${baseUrl}/api/v1/harness/stalled`, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-internal-api-secret': secret },
-        body: JSON.stringify({ runs: candidates.map(({ runId, workflowRunId }) => ({ runId, workflowRunId })) }),
+        body: JSON.stringify({ runs: candidates.slice(0, BATCH_LIMIT).map(({ runId, workflowRunId }) => ({ runId, workflowRunId })) }),
       })
       if (!response.ok) throw new Error(`harness_stalled_callback_${response.status}`)
       const { orphaned } = await response.json() as { orphaned?: Array<{ runId: string; workflowRunId: string }> }

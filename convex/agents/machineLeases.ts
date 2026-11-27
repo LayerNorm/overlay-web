@@ -4,6 +4,7 @@ import { mutation, query } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
 import { finalizeWorkspaceLedger, workspaceAvailableMicros, workspaceBudgetLowAfterCharge, workspaceRemainingCents } from '../platform/usage'
 import { chargeSandboxSpendLimits } from '../lib/sandboxSpendLimits'
+import { insertUsageOperation } from '../billing/usageTotals'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
 
 /**
@@ -768,7 +769,7 @@ export const meterSandboxLeaseDebitByServer = mutation({
             nextUsage.runtimeHoldLimits = []
             nextUsage.runtimeHoldLimitId = null
           }
-          if (charge) await ctx.db.insert('usageOperations', {
+          if (charge) await insertUsageOperation(ctx, {
             userId: payer.userId,
             billingAccountId,
             operationId: `sandbox-meter:${args.leaseId}:${meterVersion + 1}`,

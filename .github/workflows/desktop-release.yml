@@ -1,0 +1,158 @@
+name: Desktop release (macOS)
+
+# Builds, signs, notarizes and publishes the desktop app from one exact source
+# commit. Releases are tagged desktop-v<version> in this repository. The Mac
+# app's updater reads this repository's latest release, so desktop releases are
+# the only releases marked latest here.
+on:
+  workflow_dispatch:
+    inputs:
+      release_source_sha:
+        description: Full 40-character source commit to build
+        required: true
+        type: string
+
+permissions:
+  contents: read
+concurrency:
+  group: desktop-release-${{ inputs.release_source_sha }}
+  cancel-in-progress: false
+
+jobs:
+  build-mac:
+    runs-on: macos-15
+    # Signing secrets live only in this protected environment (not repo-wide).
+    environment: mac-release
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    defaults:
+      run:
+        working-directory: apps/desktop
+
+    steps:
+      - name: Validate immutable source
+        working-directory: .
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: |
+          if ! [[ "$RELEASE_SOURCE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "release_source_sha must be a full lowercase commit SHA" >&2
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.release_source_sha }}
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify source and dependencies
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
+          test -z "$(git status --porcelain)"
+          npm run license:check
+          npm run security:verify:source
+
+      - name: Build, sign, and notarize
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: npm run build:mac:ci
+
+      - name: Generate dependency SBOM
+        run: npm run generate:sbom
+
+      - name: Verify signed artifacts
+        env:
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+        run: npm run verify:mac-artifact
+
+      - name: Save signed acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: signed-acceptance-${{ inputs.release_source_sha }}
+          path: apps/desktop/test-results/signed-acceptance/
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Attest verified artifacts
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/sbom.cdx.json
+
+      - name: Upload immutable release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: overlay-macos-${{ inputs.release_source_sha }}
+          path: |
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/sbom.cdx.json
+            apps/desktop/dist/release-manifest.json
+          if-no-files-found: error
+          retention-days: 7
+
+  # Publish to this repository's GitHub Releases (open-source model).
+  # Build job never receives write access; publish uses GITHUB_TOKEN only.
+  publish-mac:
+    needs: build-mac
+    runs-on: ubuntu-24.04
+    environment: release-publish
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download verified release candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: overlay-macos-${{ inputs.release_source_sha }}
+          path: dist
+
+      - name: Publish verified artifacts to this repository
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
+          RELEASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./dist/release-manifest.json').version")"
+          TAG="desktop-v${VERSION}"
+          NOTES="Overlay Desktop ${VERSION}, built from source commit ${RELEASE_SOURCE_SHA}."
+
+          if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+            echo "Release $TAG already exists; uploading assets only."
+            gh release upload "$TAG" dist/* --repo "$RELEASE_REPO" --clobber
+          else
+            gh release create "$TAG" dist/* \
+              --repo "$RELEASE_REPO" \
+              --target "$RELEASE_SOURCE_SHA" \
+              --title "Overlay Desktop v${VERSION}" \
+              --notes "$NOTES" \
+              --latest
+          fi

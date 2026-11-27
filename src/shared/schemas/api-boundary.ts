@@ -1021,6 +1021,7 @@ export const webApiBoundaryDefinitions = [
 export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/work/resume-assignment', reason: 'Private dependency-release callback authenticated by the internal API secret, with fenced assignment claims.' },
   { routePath: '/api/v1/harness/continuation', reason: 'Private continuation callback requires the internal API secret and is excluded from the public web API reference.' },
+  { routePath: '/api/v1/harness/stalled', reason: 'Private stalled-run sweep callback from Convex; requires the internal API secret and is excluded from the public web API reference.' },
   {
     routePath: '/api/v1/mcps/oauth/callback',
     reason: 'Third-party OAuth redirect and desktop confirmation flow; it is protected by single-use state rather than the public API authentication scheme.',

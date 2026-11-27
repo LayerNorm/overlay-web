@@ -1,8 +1,10 @@
 # Runs that never stop
 
 Status: in progress. The first slice (N1 for faults inside a model invocation, the N2 sweep as detection, the
-production alarm, the repeated-failure note and the computer staying up for terminal sessions) is built and
-tested; not yet verified in production. Everything else waits for evidence from the alarm.
+production alarm, the repeated-failure note and the computer staying up for terminal sessions) is deployed on web
+and Convex. The sweep was run in production and reported the existing orphaned runs once; unlimited retries and
+replays are covered by tests but not yet seen in a production run. Everything else waits for evidence from the
+alarm.
 
 ## Goal
 

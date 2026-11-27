@@ -28,6 +28,7 @@ plans
 renders
 transcripts
 
-overlay-chrome
-overlay-desktop
-overlay-mobile
+# The web deployment never needs the other apps.
+apps/desktop
+apps/mobile
+apps/chrome

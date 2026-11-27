@@ -43,7 +43,7 @@ function fixture({ current = pull(), existing = true, backendActive = true, chan
     calls.push({ service: 'vercel', path, ...options })
     const method = options.method ?? 'GET'
     if (path === `/v9/projects/${CONFIG.projectId}`) return { id: CONFIG.projectId, name: CONFIG.projectName,
-      link: { type: 'github', repoId: CONFIG.repositoryId, org: 'LayerNorm', repo: 'overlay-web' } }
+      link: { type: 'github', repoId: CONFIG.repositoryId, org: 'LayerNorm', repo: 'overlay' } }
     if (path === `/v9/projects/${CONFIG.projectId}/domains/${CONFIG.previewWildcardDomain}`) {
       return { name: CONFIG.previewWildcardDomain, verified: true, gitBranch: wildcardBranch }
     }

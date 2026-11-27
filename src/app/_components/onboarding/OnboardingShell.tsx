@@ -19,6 +19,7 @@ import { useWorkspaceHref } from "@/hooks/use-workspace-href";
 import { OnboardingWorkHandoff } from "@/components/providers/OnboardingWorkHandoff";
 import { OnboardingDots } from "./OnboardingDots";
 import { OnboardingIntro } from "./OnboardingIntro";
+import { DesktopOnboarding } from "./desktop/DesktopOnboarding";
 import { requestOnboarding, skipOnboarding } from "./onboarding-client";
 import styles from "./onboarding.module.css";
 
@@ -87,6 +88,11 @@ function AuthenticatedOnboardingShell({
   const [intro, setIntro] = useState(false);
   const [active, setActive] = useState(false);
   const [handoff, setHandoff] = useState<{ taskId: string; session: OnboardingSession } | null>(null);
+  // A new account on Overlay Desktop sets up the app first; the conversation starts with its answers. The app's
+  // preload exposes its bridge before the page runs, so this is known before the bridge's handshake finishes.
+  const [desktopApp] = useState(() => typeof window !== "undefined" && "overlayDesktop" in window);
+  const { user } = useAuth();
+  const [desktopSetup, setDesktopSetup] = useState(false);
   const conversation = useRef<HTMLDivElement>(null);
   const dismissIntro = useCallback(() => setIntro(false), []);
   const skip = useCallback(() => {
@@ -102,6 +108,10 @@ function AuthenticatedOnboardingShell({
     const abort = new AbortController();
     void (async () => {
       let next = await requestOnboarding(workspaceId, undefined, abort.signal);
+      if (!next.completed && next.desktopSetup && desktopApp) {
+        if (!abort.signal.aborted) { setDesktopSetup(true); setResult(next); }
+        return;
+      }
       if (!next.completed) {
         void import("./OnboardingConversation");
         const fresh = !next.session;
@@ -123,7 +133,7 @@ function AuthenticatedOnboardingShell({
         );
     });
     return () => abort.abort();
-  }, [workspaceId, retry]);
+  }, [workspaceId, retry, desktopApp]);
   const openWork = useCallback((taskId = result?.session?.taskId, replace = false) => {
     if (!taskId) return;
     const href = buildWorkspaceHref(workspaceId, `/app/work?task=${encodeURIComponent(taskId)}&scope=personal`, 'personal');
@@ -140,7 +150,7 @@ function AuthenticatedOnboardingShell({
     setResult(next);
   };
   const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
-  const locked = !bypass && !billingRecovery && (!result || (active && !result.completed) || Boolean(handoff));
+  const locked = !bypass && !billingRecovery && (!result || desktopSetup || (active && !result.completed) || Boolean(handoff));
   const visibleSession = handoff?.session ?? result?.session;
   const showConversation =
     !bypass && !billingRecovery && billingSummary && visibleSession && (active || Boolean(handoff));
@@ -158,7 +168,18 @@ function AuthenticatedOnboardingShell({
         data-onboarding-locked={locked}
         className={`app-main ${styles.main} ${locked ? "" : "pt-14 md:pt-0"}`}
       >
-        {!bypass && (!result || (active && !result.completed && !billingSummary)) ? (
+        {desktopSetup && !bypass && user ? (
+          <DesktopOnboarding
+            userId={user.id}
+            userName={[user.firstName, user.lastName].filter(Boolean).join(" ")}
+            personalWorkspaceId={workspaceId}
+            onStarted={(started) => {
+              setDesktopSetup(false);
+              setActive(true);
+              setResult(started);
+            }}
+          />
+        ) : !bypass && (!result || (active && !result.completed && !billingSummary)) ? (
           <div className="flex h-full items-center justify-center px-6">
             <div className="max-w-sm space-y-4 text-center">
               {error || billingSummary === null ? (

@@ -530,3 +530,17 @@ test('Open Work completes an unpaid saved draft without executing, validates own
   assert.deepEqual(await f.service.act('user-1', 'workspace-1', action), completed)
   assert.deepEqual(task, { id: 'task-1', title: 'Review the launch plan', workspaceId: 'workspace-1', createdBy: 'user-1' })
 })
+
+test('answers from Overlay Desktop setup start the conversation after them', async () => {
+  const f = fixture()
+  const result = await f.service.start('user-1', 'workspace-1', { prefill: { name: 'Sam', about: 'Operations', team: 'Just me' } })
+  assert.equal(result.session?.step, 'daily')
+  assert.deepEqual(result.session?.profile, { name: 'Sam', about: 'Operations', daily: '', team: 'Just me' })
+  assert.equal(f.messages.length, 1)
+  // Without a team answer, an owner is still asked about their team.
+  const g = fixture()
+  assert.equal((await g.service.start('user-1', 'workspace-1', { prefill: { name: 'Sam', about: 'Operations' } })).session?.step, 'team')
+  // A start with answers is a normal start action.
+  assert.ok(OnboardingActionSchema.safeParse({ action: 'start', prefill: { name: 'Sam', about: 'Operations' } }).success)
+  assert.ok(!OnboardingActionSchema.safeParse({ action: 'start', prefill: { name: '', about: 'Operations' } }).success)
+})
