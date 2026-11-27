@@ -22,6 +22,10 @@ import { OnboardingIntro } from "./OnboardingIntro";
 import { DesktopOnboarding } from "./desktop/DesktopOnboarding";
 import { requestOnboarding, skipOnboarding } from "./onboarding-client";
 import styles from "./onboarding.module.css";
+import { agentThreadHref } from "@/components/layout/sidebar-nav";
+import { trackOnboarding } from "./onboarding-analytics";
+import { OnboardingPlanGate } from "./OnboardingPlanChoice";
+import { useLiveWorkTask } from "@/features/work/lib/use-live-work";
 
 const OnboardingConversation = dynamic(
   () => import("./OnboardingConversation").then((mod) => ({ default: mod.OnboardingConversation })),
@@ -123,6 +127,7 @@ function AuthenticatedOnboardingShell({
         if (!abort.signal.aborted) {
           setActive(true);
           setIntro(fresh);
+          if (fresh) trackOnboarding("onboarding_started", { flow: next.session?.flowVersion ?? 0 });
         }
       }
       if (!abort.signal.aborted) setResult(next);
@@ -142,6 +147,15 @@ function AuthenticatedOnboardingShell({
   }, [buildWorkspaceHref, result?.session?.taskId, router, workspaceId]);
   const finishHandoff = useCallback(() => setHandoff(null), []);
   const updateResult = (next: OnboardingSessionResponse) => {
+    const done = next.completed ? next.session : null;
+    if (done?.flowVersion === 4 && done.taskId && done.taskConversationId) {
+      // Flow 4 opens the thread the first task runs in: Personal chief when solo, Overlay with a team.
+      const scope = done.taskAgentId && done.taskAgentId !== done.agentId ? "personal" : "workspace";
+      setActive(false);
+      setResult(next);
+      router.push(agentThreadHref(buildWorkspaceHref(workspaceId, "/app/agents", scope), done.taskAgentId ?? done.agentId, done.taskConversationId, scope));
+      return;
+    }
     if (next.completed && next.session?.taskId) {
       setHandoff({ taskId: next.session.taskId, session: result?.session ?? next.session });
       setActive(false);
@@ -150,6 +164,8 @@ function AuthenticatedOnboardingShell({
     setResult(next);
   };
   const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
+  const firstTaskId = result?.completed && result.session?.flowVersion === 4 ? result.session.taskId ?? null : null;
+  const firstTask = useLiveWorkTask(firstTaskId);
   const locked = !bypass && !billingRecovery && (!result || desktopSetup || (active && !result.completed) || Boolean(handoff));
   const visibleSession = handoff?.session ?? result?.session;
   const showConversation =
@@ -226,6 +242,7 @@ function AuthenticatedOnboardingShell({
           {children}
         </OnboardingWorkHandoff> : null}
         {intro && !billingRecovery && billingSummary ? <OnboardingIntro onDone={dismissIntro} /> : null}
+        {!locked && firstTaskId ? <OnboardingPlanGate workspaceId={workspaceId} taskStatus={firstTask?.status} summary={billingSummary} /> : null}
       </main>
     </>
   );

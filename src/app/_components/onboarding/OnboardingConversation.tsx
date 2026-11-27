@@ -19,9 +19,12 @@ import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contrac
 import { OnboardingEmployees } from './OnboardingEmployees'
 import { OnboardingTools } from './OnboardingTools'
 import { OnboardingDots } from './OnboardingDots'
+import { OnboardingSubscriptions } from './OnboardingSubscriptions'
+import { trackOnboarding } from './onboarding-analytics'
 import styles from './onboarding.module.css'
 
 const PLACEHOLDERS: Partial<Record<OnboardingSession['step'], string>> = {
+  heard: 'Or tell me where',
   name: 'Your name',
   about: 'Or describe it in your own words',
   team: 'Or tell me about your team',
@@ -94,6 +97,7 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
       })
       return
     }
+    trackOnboarding('onboarding_question_answered', { step: session.step, flow: session.flowVersion ?? 0 })
     replaceInput('')
     setPendingAnswer({ text, clientNonce: `onboarding:${user.id}:${session.runId}:${session.revision + 1}:user` })
     void perform(async () => {
@@ -151,9 +155,14 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
   }
   const startTask = () => perform(async () => {
     const prepared = await prepareTask()
-    await overlayAppClient.work.update(prepared.taskId!, { assigneePrincipalId: prepared.agentPrincipalId }, onboardingRequestInit(prepared, 'start-first-task'))
+    await overlayAppClient.work.update(prepared.taskId!, { assigneePrincipalId: prepared.taskAgentPrincipalId ?? prepared.agentPrincipalId }, onboardingRequestInit(prepared, 'start-first-task'))
     await act({ action: 'finish', runId: prepared.runId, revision: prepared.revision, taskId: prepared.taskId! })
+    trackOnboarding('onboarding_task_started', { flow: prepared.flowVersion ?? 0, solo: prepared.taskAgentPrincipalId !== undefined && prepared.taskAgentPrincipalId !== prepared.agentPrincipalId })
   })
+  const startFirstTask = (connected: boolean) => {
+    trackOnboarding(connected ? 'onboarding_subscription_connected' : 'onboarding_subscription_skipped', {})
+    void startTask()
+  }
 
   const openDraft = () => perform(async () => {
     const prepared = await prepareTask()
@@ -170,8 +179,8 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
   const firstName = user?.firstName?.trim()
   const controls = (): ReactNode => {
     switch (session.step) {
-      case 'name': return <>{firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null}<p className="mt-3 text-xs text-muted-foreground">{nameHint}</p></>
-      case 'about': case 'team': case 'website': return <SingleChoices choices={labels} disabled={busy} onPick={answer} />
+      case 'name': return <>{firstName ? <SingleChoices choices={[firstName]} disabled={busy} onPick={answer} /> : null}{session.flowVersion === 4 ? null : <p className="mt-3 text-xs text-muted-foreground">{nameHint}</p>}</>
+      case 'heard': case 'about': case 'team': case 'website': return <SingleChoices choices={labels} disabled={busy} onPick={answer} />
       case 'daily': return <MultiChoices choices={labels} selected={picked} disabled={busy} onContinue={answerPicked}
         onToggle={(label) => setPicked((current) => { const next = new Set(current); if (!next.delete(label)) next.add(label); return next })} />
       case 'employees': return <OnboardingEmployees suggested={session.employees} disabled={busy} onConfirm={createEmployees} onSkip={() => { void perform(() => advance()) }} />
@@ -179,7 +188,16 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
       case 'external': return <OnboardingTools session={session} disabled={busy} onContinue={({ agentIds }) => { void perform(() => advance({ agentIds })) }} />
       case 'memories': return <OnboardingContext disabled={busy} onSave={saveMemories} onSkip={skip} />
       case 'teammates': return <OnboardingInvites disabled={busy} onInvite={invite} onSkip={skip} />
-      case 'task': return taskDraft
+      case 'task': return taskDraft && session.flowVersion === 4
+        ? <div>
+          <OnboardingSubscriptions disabled={busy} />
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="primary" size="sm" disabled={busy} onClick={() => startFirstTask(true)}>Start my task<ArrowRight className="size-3.5" /></Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => startFirstTask(false)}>Skip</Button>
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { replaceInput(taskDraft); setTaskDraft(null) }}>Edit task</Button>
+          </div>
+        </div>
+        : taskDraft
         ? <OnboardingPayment
           key={requestKey}
           workspaceId={session.workspaceId}
