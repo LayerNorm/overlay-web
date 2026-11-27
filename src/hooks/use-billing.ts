@@ -27,3 +27,13 @@ export function useLiveWorkspaceEntitlements<T>(workspaceId: string | null | und
   const ready = useReady()
   return useQuery(api.billing.browse.entitlements, ready && enabled && workspaceId ? { workspaceId } : 'skip') as T | null | undefined
 }
+
+export type MemberSpendRow = { userId: string; name: string; role: string; spentCents: number; capCents: number | null; capUsedCents: number }
+export type MemberSpend = { hasBillingAccount: boolean; truncated: boolean; periodStart?: number; periodEnd?: number; people: MemberSpendRow[] }
+
+/** Workspace → Billing → Spend per person, live. Undefined while loading; null for anyone but owners and admins. */
+export function useLiveMemberSpend(workspaceId: string | null | undefined, enabled: boolean) {
+  const ready = useReady()
+  return useQuery(api.billing.memberSpend.members, ready && enabled && workspaceId ? { workspaceId } : 'skip') as
+    MemberSpend | null | undefined
+}

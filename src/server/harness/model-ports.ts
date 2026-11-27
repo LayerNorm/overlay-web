@@ -21,16 +21,19 @@ import { harnessDiagnosticForFailure, INTERRUPTED_MODEL_CALL_PROVIDER } from './
 
 export type { HarnessModelPurpose, PreparedHarnessModel } from './model-port-types'
 import { HarnessYield, waitForHarnessModelRecovery } from './model-recovery'
+import { reportHarnessRetrying } from './harness-alerts'
 
 type ModelStep = Parameters<HarnessExecutionPorts['recordModelStep']>[0]
 
-/** Consecutive retries of calls that ended before the provider reported usage. */
-export const MAX_INTERRUPTED_MODEL_RETRIES = 3
-// Only transient causes are retried. Account, request, content-filter, authorization,
-// deadline and funding failures would repeat, so they end the run with their real cause.
+/** Every this many consecutive failures of one call, an alert says the run keeps retrying. It is never a limit. */
+export const MODEL_RETRY_ALERT_EVERY = 5
+// Only transient causes are retried, and they are retried until the call succeeds (with the backoff in
+// `nextModelRecovery`): a dropped connection or an outage never ends a run. Account, request, content-filter,
+// authorization, deadline and funding failures would repeat, so they end the run with their real cause.
 const RETRYABLE_INTERRUPTIONS = new Set<HarnessDiagnosticCode>([
   'MODEL_OUTCOME_UNKNOWN', 'PROVIDER_TIMEOUT', 'PROVIDER_RATE_LIMIT', 'PROVIDER_UNAVAILABLE',
 ])
+const INTERNAL_FAULT_CAUSES = new Set<HarnessDiagnosticCode>(['INTERNAL_ERROR', 'TOOL_OUTCOME_UNKNOWN', 'BACKEND_UNAVAILABLE'])
 
 function recordPreparationMetricIfEligible(
   reference: HarnessExecutionReference,
@@ -150,18 +153,20 @@ export function createHarnessModelPorts(input: {
   })
 
   return {
-    recoverModelFailure: async (receiptId, error) => {
+    recoverModelFailure: async (receiptId, error, options) => {
       let state = await readHarnessState(reference)
-      const dispatch = state.modelReservation?.id === receiptId ? state.modelReservation.dispatch : undefined
-      // The call threw after it was sent and before the provider reported usage. No
+      const reserved = state.modelReservation?.id === receiptId
+      const dispatch = reserved ? state.modelReservation?.dispatch : undefined
+      // The call threw before the provider reported usage: after it was sent, or
+      // before it was sent at all (a dropped connection while claiming it). No
       // billing hold exists (billingReservationId is always null), so settle it as a
-      // failed zero-usage receipt. That closes the dispatch and starts the normal
+      // failed zero-usage receipt. That closes the reservation and starts the normal
       // retry; a real hold would still need reconciliation.
-      if (state.status === 'running' && dispatch && dispatch.billingReservationId === null) {
+      if (state.status === 'running' && reserved && (!dispatch || dispatch.billingReservationId === null)) {
         try {
           state = await applyHarnessOperation(reference, `interrupted:${receiptId}`, {
             type: 'record_receipt', receipt: {
-              id: receiptId, modelId: dispatch.modelId, provider: INTERRUPTED_MODEL_CALL_PROVIDER,
+              id: receiptId, modelId: dispatch?.modelId ?? input.modelId, provider: INTERRUPTED_MODEL_CALL_PROVIDER,
               inputTokens: 0, outputTokens: 0, reasoningTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0,
               contextWindow: preparedCalls.get(receiptId)?.contextWindow ?? null,
               costMicros: 0, costSource: 'catalog', responseFailure: 'provider_error',
@@ -171,8 +176,15 @@ export function createHarnessModelPorts(input: {
           return false
         }
         const cause = harnessDiagnosticForFailure(reference.runId, state, error, 'model').code
-        if (!RETRYABLE_INTERRUPTIONS.has(cause)
-          || (state.modelRecovery?.attempt ?? 0) > MAX_INTERRUPTED_MODEL_RETRIES) return false
+        // A fault the runner replays (`settleInternalFault`) may also be an Overlay error or a lost tool outcome; the
+        // runner tells the model about any tools the interrupted step started. Permanent causes are never retried.
+        const retryable = RETRYABLE_INTERRUPTIONS.has(cause)
+          || (options?.internalFault === true && INTERNAL_FAULT_CAUSES.has(cause))
+        if (!retryable) return false
+        const attempt = state.modelRecovery?.attempt ?? 0
+        if (attempt > 0 && attempt % MODEL_RETRY_ALERT_EVERY === 0) {
+          await reportHarnessRetrying({ runId: reference.runId, code: cause, attempts: attempt, kind: 'model' })
+        }
       }
       const receipt = state.latestReceipt
       if (state.status !== 'running' || state.modelReservation || receipt?.id !== receiptId) return false

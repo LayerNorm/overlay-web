@@ -105,6 +105,8 @@ export type SearchTextMatchRow = {
   snippet: string
 }
 
+const MAX_HTML_PAGE_BYTES = 10 * 1024 * 1024
+
 export type ContentProxyResult =
   | { kind: 'json'; payload: Record<string, unknown>; status: number }
   | { kind: 'redirect'; url: string }
@@ -524,6 +526,29 @@ export class FileService {
   }
 
   /** The full text of a file kept in object storage, or null when the file keeps its text inline. */
+  /**
+   * The text of an HTML file the user may read, wherever it is kept (in its row, as text in object storage, or as an
+   * uploaded object), so it can be served as a page of its own under a script sandbox. Other files return null.
+   */
+  async getHtmlPage(args: { fileId: string; userId: string }): Promise<{ name: string; html: string } | null> {
+    const file = await this.deps.repository.getFile({ fileId: args.fileId, userId: args.userId }).catch((_error) => null)
+    if (!file || !/\.html?$/i.test(file.name)) return null
+    if (typeof file.sizeBytes === 'number' && file.sizeBytes > MAX_HTML_PAGE_BYTES) return null
+    const stored = await this.readObjectStoreText(file, file.userId)
+    if (stored !== null) return { name: file.name, html: stored }
+    // An upload's bytes are the page; its row may hold only a download path or an empty extracted-text field.
+    if (typeof file.r2Key !== 'string' || !file.r2Key) {
+      const content = file.content || file.textContent || ''
+      return isBinaryProxyContent(content) ? null : { name: file.name, html: content }
+    }
+    if (!isOwnedStorageKey(file.userId, file.r2Key)) return null
+    const bytes = await this.storage.downloadBuffer(file.r2Key)
+    if (!bytes || bytes.byteLength > MAX_HTML_PAGE_BYTES) return null
+    await this.deps.repository.recordFileBandwidth({ userId: args.userId, bytes: bytes.byteLength })
+      .catch((error) => logger.warn('[files/content] bandwidth accounting failed', error))
+    return { name: file.name, html: new TextDecoder().decode(bytes) }
+  }
+
   async readObjectStoreText(file: { textInObjectStore?: unknown; r2Key?: unknown }, userId: string): Promise<string | null> {
     if (!file.textInObjectStore || typeof file.r2Key !== 'string' || !isOwnedStorageKey(userId, file.r2Key)) return null
     const bytes = await this.storage.downloadBuffer(file.r2Key)
@@ -647,7 +672,7 @@ export class FileService {
     }
 
     if (proxyTarget.r2Key) {
-      if (!isOwnedStorageKey(args.userId, proxyTarget.r2Key)) {
+      if (!isOwnedStorageKey(proxyTarget.ownerUserId ?? args.userId, proxyTarget.r2Key)) {
         return { kind: 'json', payload: { error: 'Not found' }, status: 404 }
       }
       await this.deps.repository.recordFileBandwidth({
@@ -686,7 +711,8 @@ export class FileService {
         accessToken: args.accessToken,
       })
 
-      if (!fileRow || fileRow.userId !== args.userId) {
+      // The caller's own files, and files in Workspace (readable by every member; `getFile` checks membership).
+      if (!fileRow || (fileRow.userId !== args.userId && fileRow.scope !== 'workspace')) {
         serviceError({ error: 'Invalid or inaccessible file id', fileId }, 403)
       }
 

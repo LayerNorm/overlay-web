@@ -163,6 +163,8 @@ export const GenerateImageRequest = z.object({
   turnId: z.string().min(1).optional(),
   imageUrl: z.string().min(1).optional(),
   temporaryChat: z.boolean().optional(),
+  /** Where the saved output goes: Personal (the default) or Workspace. */
+  scope: z.enum(['personal', 'workspace']).optional(),
 }).passthrough()
 
 export const GenerateVideoRequest = GenerateImageRequest.extend({

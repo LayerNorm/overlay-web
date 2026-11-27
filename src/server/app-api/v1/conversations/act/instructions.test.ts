@@ -120,3 +120,12 @@ test('a Notebook chat names its note and edits it directly with the note tools',
   assert.match(instructions, /Say a change was made only after an edit tool returned success in this turn/)
   assert.doesNotMatch(buildInstructions(), /Notebook editor/)
 })
+
+test('the Data and APIs note appears only when the tools are offered', () => {
+  const without = buildInstructions()
+  assert.ok(!without.includes('search_apis'))
+  const withApis = buildInstructions({ availableToolIds: ['search_apis', 'inspect_api', 'run_api'] })
+  assert.match(withApis, /call search_apis in plain words, then inspect_api/)
+  assert.match(withApis, /Every run is billed to the workspace/)
+  assert.match(withApis, /untrusted data/)
+})

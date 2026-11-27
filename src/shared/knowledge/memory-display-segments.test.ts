@@ -47,3 +47,17 @@ test('only a memory saved as owner-only reads as private', () => {
   ], { viewerUserId: 'user_a' })
   assert.deepEqual(rows.map((row) => row.isPrivate), [true, false, false])
 })
+
+test('a full-length context brief is saved whole in at most the memory cap', async () => {
+  const { MAX_MEMORY_INGESTION_CHUNKS, segmentMemoryForIngestion, segmentMemoryForSidebarDisplay } = await import('./memory-display-segments')
+  const brief = Array.from({ length: 160 }, (_, index) => `- Fact ${index}: I lead the platform team and prefer short written updates over meetings.`).join('\n\n').slice(0, 20_000)
+  assert.ok(segmentMemoryForSidebarDisplay(brief).length > MAX_MEMORY_INGESTION_CHUNKS)
+  const chunks = segmentMemoryForIngestion(brief)
+  assert.ok(chunks.length <= MAX_MEMORY_INGESTION_CHUNKS)
+  assert.equal(chunks.join('\n\n').replace(/\s+/g, ' '), brief.replace(/\s+/g, ' ').trim())
+})
+
+test('a short paste keeps its ~300-character pieces', async () => {
+  const { segmentMemoryForIngestion } = await import('./memory-display-segments')
+  assert.deepEqual(segmentMemoryForIngestion('I prefer async updates.'), ['I prefer async updates.'])
+})

@@ -38,7 +38,6 @@ export async function canUseProviderConnection(
 ): Promise<boolean> {
   const scope = connection.scope ?? 'personal'
   if (scope === 'personal') return connection.userId === args.actorUserId
-  if (connection.authKind !== 'subscription' || !connection.subscriptionProvider) return false
   if (!args.workspaceId || args.workspaceId !== connection.workspaceId) return false
   return await isActiveWorkspaceMember(ctx, {
     userId: args.actorUserId,

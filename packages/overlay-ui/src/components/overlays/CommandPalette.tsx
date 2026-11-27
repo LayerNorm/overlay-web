@@ -15,6 +15,8 @@ export type CommandPaletteRow = (
       description?: string
       icon?: ReactNode
       logoUrl?: string
+      /** Shown at the row's right end, after the description (a scope tag, for example). */
+      trailing?: ReactNode
     }
 ) & { disabled?: boolean }
 
@@ -36,6 +38,8 @@ export interface CommandPaletteProps {
   /** When set, replaces the row list (e.g. no results). */
   emptyState?: ReactNode
   onActivateRow: (row: CommandPaletteRow) => void
+  /** A control at the right of the search row, such as a scope filter. */
+  filter?: ReactNode
 }
 
 export function CommandPalette({
@@ -50,6 +54,7 @@ export function CommandPalette({
   loading = false,
   emptyState,
   onActivateRow,
+  filter,
 }: CommandPaletteProps) {
   const inputRef = useRef<HTMLInputElement>(null)
   const returnFocus = useDialogReturnFocus()
@@ -101,7 +106,7 @@ export function CommandPalette({
         onValueChange={setActiveValue}
       >
         {breadcrumb ? (
-          <div className="flex shrink-0 items-center gap-1.5 border-b border-(--border) bg-(--surface-muted) px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-(--muted-light)">
+          <div className="flex shrink-0 items-center gap-1.5 bg-(--surface-muted) px-4 py-2 text-[10px] font-medium uppercase tracking-wider text-(--muted-light)">
             <button
               type="button"
               onClick={goBack}
@@ -128,6 +133,7 @@ export function CommandPalette({
           value={query}
           onValueChange={onQueryChange}
           placeholder={placeholder}
+          trailing={filter}
         />
         <CommandList aria-busy={loading}>
           {showSpinner ? (
@@ -196,6 +202,7 @@ export function CommandPalette({
                     {row.description}
                   </span>
                 ) : null}
+                {row.kind === 'item' && row.trailing ? row.trailing : null}
               </CommandItem>
             ))
           )}

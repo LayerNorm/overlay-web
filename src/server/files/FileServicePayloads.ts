@@ -13,9 +13,9 @@ import { isOwnedFileR2Key, isOwnedOutputR2Key } from '@/server/storage/storage-k
 import type { FileSubtreeStorageEntry } from './FileRepository'
 import { serviceError } from './FileServiceErrors'
 
+// HTML is allowed: the content route serves it under a CSP sandbox and previews render it in a sandboxed iframe.
 const BLOCKED_MIME_TYPES = new Set([
   'image/svg+xml',
-  'text/html',
   'application/xhtml+xml',
   'application/javascript',
   'text/javascript',

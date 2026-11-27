@@ -10,6 +10,12 @@ async function readJsonBody(request: NextRequest, context: AppApiRouteContext) {
   return await request.json()
 }
 
+/** `beforeUpdatedAt` pages the list: the rows updated before the last one of a full page (at most 100 a page). */
+function beforeUpdatedAtParam(value: string | null): { beforeUpdatedAt?: number } {
+  const parsed = value === null ? NaN : Number(value)
+  return Number.isFinite(parsed) ? { beforeUpdatedAt: parsed } : {}
+}
+
 export async function GET(request: NextRequest, context: AppApiRouteContext) {
   try {
     const { auth } = context
@@ -25,6 +31,7 @@ export async function GET(request: NextRequest, context: AppApiRouteContext) {
       includeDeleted,
       includeRuns,
       view: parseResourceView(request.nextUrl.searchParams.get('view')),
+      ...beforeUpdatedAtParam(request.nextUrl.searchParams.get('beforeUpdatedAt')),
     })
     return NextResponse.json(result)
   } catch (error) {

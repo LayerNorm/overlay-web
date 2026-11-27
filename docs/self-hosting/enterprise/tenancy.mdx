@@ -80,11 +80,13 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `apiIdempotencyKeys` | `userId` | Deployment boundary | Add `tenantId`; idempotency keys must be tenant-scoped. |
 | `apiKeys` | `userId` | Deployment boundary | Add `tenantId`; validation, scopes, rotation, revocation, audit, and rate limits must enforce tenant context. |
 | `tokenUsage` | `userId` | Deployment boundary | Add `tenantId`; usage and billing rollups must be tenant-scoped. |
+| `usageDays` | `userId` | Deployment boundary | Add `tenantId`; daily charge totals per billing account and person must be tenant-scoped like the charges they add up. |
 | `budgetReservations` | `userId` | Deployment boundary | Add `tenantId`; reservation and reconciliation queries must be tenant-scoped. |
 | `usageOperations` | `userId` | Deployment boundary | Add `tenantId`; operation identity, request fingerprints, and reconciliation must be tenant-scoped. |
 | `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
 | `toolInvocations` | `userId` | Deployment boundary | Add `tenantId`; audit/cost views must include tenant context. |
 | `dailyUsage` | `userId` | Deployment boundary | Add `tenantId`; usage counters must include tenant context. |
+| `privateThreadAllowances` | `userId` | Deployment boundary | Add `tenantId`; free-tier counters for private threads must be counted per tenant and person. |
 | `skills` | `userId` | Deployment boundary | Add `tenantId`; project and enabled-skill indexes must include tenant context. |
 | `automations` | `userId` | Deployment boundary | Add `tenantId`; scheduling and runner queries must not cross tenants. |
 | `workItems` | `userId` | Deployment boundary | Add `tenantId`; task lists, board ordering, and dependency checks are already workspace-scoped and must also be tenant-scoped. |

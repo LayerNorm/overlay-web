@@ -2,7 +2,7 @@ import 'server-only'
 
 import type { WorkContext, WorkEvent, WorkItem, WorkPerson, WorkContextRef, WorkDoneWhen } from '@overlay/app-core'
 import { WORK_CONTEXT_TYPES, WORK_DATE_PATTERN, WORK_STATUSES, isWorkDate } from '@/shared/work/status'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
 
@@ -85,6 +85,11 @@ function resolvePerson(value: string | null | undefined, context: TaskContext, f
   throw new NameResolutionError(`Unknown ${field} "${normalized}". Options: ${available}.`)
 }
 
+/** Who made the task, by name (people come from the Work context, so no extra lookup). */
+function creatorName(item: Pick<WorkItem, 'createdBy'>, people: readonly WorkPerson[]): string | null {
+  return people.find((person) => person.userId === item.createdBy)?.displayName ?? null
+}
+
 function compactTask(item: WorkItem, people: readonly WorkPerson[]) {
   const assignee = people.find((person) => person.principalId === item.assigneePrincipalId)
   return {
@@ -95,6 +100,7 @@ function compactTask(item: WorkItem, people: readonly WorkPerson[]) {
     assignee: assignee?.displayName ?? null,
     dueDate: item.dueDate,
     scope: item.scope,
+    createdBy: creatorName(item, people),
     revision: revisionOf(item),
   }
 }
@@ -104,6 +110,7 @@ function fullTask(item: WorkItem, people: readonly WorkPerson[]) {
     ...item,
     priority: PRIORITY_LABEL[item.priority],
     assigneeName: people.find((person) => person.principalId === item.assigneePrincipalId)?.displayName ?? null,
+    createdByName: creatorName(item, people),
     reviewerName: people.find((person) => person.userId === item.reviewerUserId)?.displayName ?? null,
     revision: revisionOf(item),
   }
@@ -177,10 +184,19 @@ export async function executeListTasks(
   }
 }
 
+/** A by-id read or edit in a workspace context reaches only Workspace tasks. */
+async function roomTaskRefusal(options: OverlayToolsOptions, taskId: string): Promise<{ success: false; error: string } | null> {
+  if (!options.sharedRoom) return null
+  const task = await fetchTask(options, taskId)
+  if (!task.ok) return { success: false, error: task.error }
+  return refusesRoomItem(options, task.data) ? { success: false, error: ROOM_PERSONAL_ITEM_ERROR } : null
+}
+
 export async function executeGetTask(options: OverlayToolsOptions, input: { taskId: string }) {
   try {
     const [itemResult, contextResult] = await Promise.all([fetchTask(options, input.taskId), taskContext(options)])
     if (!itemResult.ok) return { success: false, error: itemResult.error }
+    if (refusesRoomItem(options, itemResult.data)) return { success: false, error: ROOM_PERSONAL_ITEM_ERROR }
     if (!contextResult.ok) return { success: false, error: contextResult.error }
     const eventsResult = await getJson<{ events: WorkEvent[] }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}/events`)
     if (!eventsResult.ok) return { success: false, error: eventsResult.error }
@@ -259,7 +275,7 @@ export async function executeCreateTask(options: OverlayToolsOptions, input: {
     const response = await sendJson<{ item?: WorkItem }>(options, WORK_PATH, {
       ...fields,
       title: input.title,
-      ...(input.scope ? { scope: input.scope } : {}),
+      scope: roomCreateScope(options, input.scope),
       ...(input.status ? { status: input.status } : {}),
     })
     if (!response.ok) return { success: false, error: response.error }
@@ -292,6 +308,8 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
   context?: WorkContextRef[]
 }) {
   try {
+    const refused = await roomTaskRefusal(options, input.taskId)
+    if (refused) return refused
     let expectedUpdatedAt: number | undefined
     if (input.revision !== undefined) {
       expectedUpdatedAt = Number(input.revision)
@@ -339,6 +357,8 @@ export async function executeUpdateTask(options: OverlayToolsOptions, input: {
 
 export async function executeCommentOnTask(options: OverlayToolsOptions, input: { taskId: string; body: string }) {
   try {
+    const refused = await roomTaskRefusal(options, input.taskId)
+    if (refused) return refused
     const result = await sendJson<{ success: boolean }>(options, `${WORK_PATH}/${encodeURIComponent(input.taskId.trim())}/events`, { body: input.body })
     if (!result.ok) return { success: false, error: result.error }
     const current = await fetchTask(options, input.taskId).catch((_error) => null)

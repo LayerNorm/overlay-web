@@ -16,11 +16,11 @@ const m = (name: string) => makeFunctionReference<'mutation'>(name)
 
 type Convex = ReturnType<typeof convexTest>
 
-/** A workspace with an owner, an admin, two members, and a guest. */
+/** A workspace with an owner, an admin, and two members; `gus` is not in it. */
 async function seed(convex: Convex, policy?: Record<string, unknown>) {
   await convex.run(async (ctx) => {
     await ctx.db.insert('workspaces', { workspaceId, kind: 'organization', name: 'Scope', slug: 'scope', status: 'active', createdAt: now, updatedAt: now })
-    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member'], ['gus', 'guest']] as const) {
+    for (const [userId, role] of [['owner', 'owner'], ['admin', 'admin'], ['alice', 'member'], ['bob', 'member']] as const) {
       await ctx.db.insert('workspacePrincipals', { principalId: `p-${userId}`, workspaceId, type: 'human', userId, displayName: userId, createdAt: now, updatedAt: now })
       await ctx.db.insert('workspaceMemberships', { membershipId: `m-${userId}`, workspaceId, principalId: `p-${userId}`, role, status: 'active', joinedAt: now, updatedAt: now })
     }
@@ -129,6 +129,91 @@ describe('automations', () => {
 })
 
 describe('files (notes, uploads, outputs, folders)', () => {
+  test('a file’s search chunks follow it: private until it is in Workspace, private again when archived (P7)', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const create = (userId: string, args: Record<string, unknown>) => convex.mutation(m('files/files:create'), { ...auth, userId, ...args }) as Promise<string>
+    const folder = await create('alice', { name: 'Plans', type: 'folder', kind: 'folder' })
+    const note = await create('alice', { name: 'Roadmap', kind: 'note', content: '# Roadmap', parentId: folder })
+    const replace = (fileId: string, visibility?: 'owner' | 'workspace') => convex.mutation(m('knowledge/knowledge:replaceKnowledgeSource'), {
+      userId: 'alice', workspaceId, sourceKind: 'file', sourceId: fileId, title: 'Roadmap',
+      segments: [{ text: 'roadmap', chunkIndex: 0, startOffset: 0, embedding: new Array(1536).fill(0) }],
+      ...(visibility ? { visibility } : {}),
+    })
+    const visibilities = () => convex.run(async (ctx) => {
+      const chunks = (await ctx.db.query('knowledgeChunks').collect()).filter((chunk) => chunk.sourceId === note)
+      const embeddings = await ctx.db.query('knowledgeChunkEmbeddings').collect()
+      return chunks.map((chunk) => `${chunk.visibility}@${chunk.userId}/${embeddings.find((e) => e.chunkId === chunk._id)?.userId}`)
+    })
+    const shared = `workspace@workspace-files:${workspaceId}/workspace-files:${workspaceId}`
+    const restampScheduled = () => convex.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect())
+      .filter((job) => job.name.includes('restampFileChunks') && job.state.kind === 'pending').map((job) => job.args[0] as { fileIds: string[] }))
+    const runRestamps = async () => {
+      for (let round = 0; round < 10; round++) {
+        const jobs = await convex.run(async (ctx) => (await ctx.db.system.query('_scheduled_functions').collect())
+          .filter((job) => job.name.includes('restampFileChunks') && job.state.kind === 'pending'))
+        if (jobs.length === 0) return
+        await convex.run(async (ctx) => { for (const job of jobs) await ctx.scheduler.cancel(job._id) })
+        for (const job of jobs) await convex.mutation(m('knowledge/knowledge:restampFileChunks'), job.args[0] as never)
+      }
+    }
+
+    // Indexing decides from the file itself, whatever the caller passes.
+    await replace(note, 'workspace')
+    expect(await visibilities()).toEqual(['owner@alice/alice'])
+
+    // Moving the folder to Workspace makes its note searchable by every member.
+    expect(await convex.mutation(m('files/files:setScope'), { ...auth, userId: 'alice', id: folder, to: 'workspace' })).toEqual({ ok: true })
+    expect((await restampScheduled()).flatMap((job) => job.fileIds)).toEqual(expect.arrayContaining([folder, note]))
+    await runRestamps()
+    expect(await visibilities()).toEqual([shared])
+    await replace(note)
+    expect(await visibilities()).toEqual([shared])
+
+    // Archived: only its uploader finds it again; restored: everyone does.
+    expect(await convex.mutation(m('files/files:archive'), { ...auth, userId: 'alice', id: folder })).toEqual({ ok: true })
+    await runRestamps()
+    expect(await visibilities()).toEqual(['owner@alice/alice'])
+    expect(await convex.mutation(m('files/files:restore'), { ...auth, userId: 'alice', id: folder })).toEqual({ ok: true })
+    await runRestamps()
+    expect(await visibilities()).toEqual([shared])
+
+    // Deleting the file removes its chunks wherever they are indexed.
+    await convex.mutation(m('knowledge/knowledge:purgeKnowledgeSource'), { sourceKind: 'file', sourceId: note, userId: 'alice' })
+    expect(await visibilities()).toEqual([])
+
+    // Who may search the workspace's files: members, not outsiders.
+    const may = (userId: string) => convex.query(q('knowledge/knowledge:canSearchWorkspaceFiles'), { requestingUserId: userId, workspaceId })
+    expect([await may('bob'), await may('gus'), await may('stranger')]).toEqual([true, false, false])
+  })
+
+  test('the file chunk backfill marks workspace files shared and everything else private, then finds nothing left', async () => {
+    const convex = convexTest(schema, modules)
+    await seed(convex)
+    const create = (userId: string, args: Record<string, unknown>) => convex.mutation(m('files/files:create'), { ...auth, userId, ...args }) as Promise<string>
+    const personal = await create('alice', { name: 'Mine', kind: 'note', content: 'mine' })
+    const shared = await create('alice', { name: 'Ours', kind: 'note', content: 'ours' })
+    await convex.run(async (ctx) => {
+      await ctx.db.patch(shared as never, { scope: 'workspace' })
+      for (const fileId of [personal, shared, personal]) {
+        const chunkId = await ctx.db.insert('knowledgeChunks', {
+          userId: 'alice', workspaceId, sourceKind: 'file', sourceId: fileId, chunkIndex: 0, startOffset: 0, text: 't',
+        })
+        await ctx.db.insert('knowledgeChunkEmbeddings', { chunkId, userId: 'alice', sourceKind: 'file', embedding: new Array(1536).fill(0) })
+      }
+    })
+    const backfill = (dryRun: boolean) => convex.mutation(m('knowledge/knowledge:backfillFileChunkVisibilityByServer'), { serverSecret: secret, dryRun })
+    expect(await backfill(true)).toMatchObject({ scanned: 3, madeWorkspace: 1, madePrivate: 2, unchanged: 0, isDone: true })
+    expect(await backfill(false)).toMatchObject({ madeWorkspace: 1, madePrivate: 2 })
+    expect(await backfill(true)).toMatchObject({ scanned: 3, madeWorkspace: 0, madePrivate: 0, unchanged: 3 })
+    const owners = await convex.run(async (ctx) => {
+      const embeddings = await ctx.db.query('knowledgeChunkEmbeddings').collect()
+      return (await ctx.db.query('knowledgeChunks').collect()).map((chunk) =>
+        `${chunk.sourceId === shared ? 'shared' : 'personal'}:${chunk.userId}:${embeddings.find((e) => e.chunkId === chunk._id)?.userId}`).sort()
+    })
+    expect(owners).toEqual(['personal:alice:alice', 'personal:alice:alice', `shared:workspace-files:${workspaceId}:workspace-files:${workspaceId}`])
+  })
+
   test('a note is private until moved; a folder takes its contents with it; archived items stay out of the default list', async () => {
     const convex = convexTest(schema, modules)
     await seed(convex)

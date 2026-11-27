@@ -40,13 +40,25 @@ export type OnboardingSession = {
   taskId?: string
   taskDraft?: string
 }
-export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
+export type OnboardingSessionResponse = {
+  completed: boolean
+  session: OnboardingSession | null
+  /** A new account's first setup on Overlay Desktop (internal/plans/DESKTOP_ONBOARDING_PLAN.md). */
+  desktopSetup?: boolean
+}
+/** Answers Overlay Desktop's setup collected before the conversation starts. */
+export const OnboardingPrefillSchema = z.object({
+  name: z.string().trim().min(1).max(200),
+  about: z.string().trim().min(1).max(500),
+  team: z.string().trim().min(1).max(200).optional(),
+}).strict()
+export type OnboardingPrefill = z.infer<typeof OnboardingPrefillSchema>
 
 const revision = z.number().int().nonnegative()
 export const OnboardingRunIdSchema = z.string().uuid()
 const ids = z.array(z.string().trim().min(1).max(200)).max(20)
 export const OnboardingActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('start') }).strict(),
+  z.object({ action: z.literal('start'), prefill: OnboardingPrefillSchema.optional() }).strict(),
   z.object({ action: z.literal('answer'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),
   z.object({ action: z.literal('back'), runId: OnboardingRunIdSchema, revision }).strict(),
   z.object({ action: z.literal('draft_task'), runId: OnboardingRunIdSchema, revision, value: z.string().trim().min(1).max(3000) }).strict(),

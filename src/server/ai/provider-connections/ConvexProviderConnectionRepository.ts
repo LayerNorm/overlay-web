@@ -73,10 +73,8 @@ export class ConvexProviderConnectionRepository implements ProviderConnectionRep
         providerId: args.providerId,
         ...(args.authKind ? { authKind: args.authKind } : {}),
         ...(args.subscriptionProvider ? { subscriptionProvider: args.subscriptionProvider } : {}),
-        ...(args.authKind === 'subscription' && args.scope ? { scope: args.scope } : {}),
-        ...(args.authKind === 'subscription' && args.workspaceId
-          ? { workspaceId: args.workspaceId }
-          : {}),
+        ...(args.scope ? { scope: args.scope } : {}),
+        ...(args.scope === 'workspace' && args.workspaceId ? { workspaceId: args.workspaceId } : {}),
         endpoint: args.endpoint,
         displayName: args.displayName,
         // Retained only for hosted WorkOS-Vault compatibility. The credential

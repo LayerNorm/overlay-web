@@ -2,20 +2,24 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@o
 
 const FAQ_ITEMS: { q: string; a: string }[] = [
   {
-    q: 'How do I run all my AI agents from one place?',
-    a: 'Overlay gives every agent a home in one workspace: agents you create in Overlay and agents you already use (Codex, Claude Code, Hermes) connect to the same roster with shared context, tools, and a computer to work from.',
+    q: 'What is an AI Chief of Staff?',
+    a: 'Overlay is an agent that runs a team of AI coworkers for you. Tell it what you need, and it breaks the work down, hands each piece to the right agent, keeps them moving and brings back only the decisions that need a person.',
   },
   {
-    q: 'Can I bring my own agents to Overlay?',
-    a: 'Yes. Connect agents running on machines you control. They join the same roster and receive workspace tools, context, and supervision through Overlay.',
+    q: 'What can Overlay’s agents do?',
+    a: 'Each agent has a role, a memory, the tools your team uses (GitHub, Slack, Gmail, Calendar, Notion and more) and a computer of its own in the cloud, so it can run code, use a browser and keep files while your laptop is closed.',
   },
   {
-    q: 'Where do Overlay agents work?',
-    a: 'In the Overlay app and wherever work already happens: Slack, Telegram, iMessage, and the web. Agents can be scheduled or triggered, and they report back to the same place.',
+    q: 'Where can I use Overlay?',
+    a: 'On the web, in Overlay for Mac, in your phone’s browser, in Slack by mentioning @Overlay, and from ChatGPT, Claude or any MCP app. Agents can also run on schedules and triggers and report back to the same place.',
+  },
+  {
+    q: 'Can my team share agents without sharing everything?',
+    a: 'Yes. Every member has a personal space that only they can see, next to the shared workspace. Shared agents, channels and automations are visible to the team; personal agents, notes and threads stay private.',
   },
   {
     q: 'How do I control what agents can do?',
-    a: 'Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent on the roster, not just the ones Overlay runs.',
+    a: 'Permissions, tool approvals, spend limits, run history, and audit trails apply to every agent in the workspace.',
   },
   {
     q: 'Is Overlay open source?',

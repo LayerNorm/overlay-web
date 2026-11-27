@@ -57,8 +57,6 @@ function render(overrides: Partial<Parameters<typeof ShareDialogContent>[0]> = {
       busy={false}
       notice={null}
       copied={false}
-      canInvite={false}
-      inviteEmail=""
       pending={null}
       target=""
       role="viewer"
@@ -69,8 +67,6 @@ function render(overrides: Partial<Parameters<typeof ShareDialogContent>[0]> = {
       onRequestRevoke={() => undefined}
       onConfirmPending={() => undefined}
       onCancelPending={() => undefined}
-      onInviteEmailChange={() => undefined}
-      onInvite={() => undefined}
       onCopyLink={() => undefined}
       {...overrides}
     />,
@@ -158,11 +154,6 @@ test('general access reflects workspace public-link policy', () => {
   assert.match(disabled, /Public links are off for this workspace/)
   assert.match(disabled, /Workspace settings → Sharing &amp; links/)
   assert.doesNotMatch(disabled, /Copy link/)
-})
-
-test('guest invitation appears only for workspace managers', () => {
-  assert.doesNotMatch(render(), /Invite as guest/)
-  assert.match(render({ canInvite: true }), /Invite as guest/)
 })
 
 test('share dialog surfaces failures instead of failing silently', () => {

@@ -417,6 +417,10 @@ export const update = mutation({
     }
 
     const now = Date.now()
+    // An archived automation never runs, so turning it on would only report a schedule that cannot fire.
+    if (automation.archivedAt !== undefined && updates.enabled === true) {
+      throw new Error('AUTOMATION_ARCHIVED')
+    }
     const patch: Partial<Doc<'automations'>> = { updatedAt: now }
     const nextEnabled = (updates.enabled ?? automation.enabled) !== false
     const nextSchedule = updates.schedule ?? automation.schedule ?? DEFAULT_SCHEDULE

@@ -1,4 +1,4 @@
-import { COMPUTER_TOOL_IDS } from './policy'
+import { API_TOOL_IDS, COMPUTER_TOOL_IDS } from './policy'
 
 export type ToolCostBucket = 'perplexity' | 'image' | 'video' | 'browser' | 'composio' | 'internal'
 
@@ -6,6 +6,8 @@ export type ToolBucket = ToolCostBucket
 
 export const INTERNAL_TOOL_IDS = new Set<string>([
   ...COMPUTER_TOOL_IDS,
+  // run_api is metered as workspace usage when it settles, so it needs no invocation row.
+  ...API_TOOL_IDS,
   'search_knowledge',
   'search_in_files',
   'list_files',
@@ -13,6 +15,9 @@ export const INTERNAL_TOOL_IDS = new Set<string>([
   'write_file',
   'create_folder',
   'move_file',
+  'move_to_workspace',
+  'archive_item',
+  'restore_item',
   'search_memory',
   'search_messages',
   'list_chats',

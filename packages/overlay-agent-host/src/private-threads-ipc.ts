@@ -16,7 +16,10 @@ export async function servePrivateThreads(stateDirectory: string): Promise<void>
   if (!send) throw new Error('overlay-agent-host private must be started by Overlay Desktop with an IPC channel.')
   const post = (message: PrivateIpcOutbound) => { if (process.connected) send(message) }
   const store = new PrivateThreadStore(privateThreadsDatabasePath(stateDirectory))
-  const service = new PrivateThreadService({ store, stateDirectory, emit: event => post({ type: 'event', event }) })
+  const service = new PrivateThreadService({
+    store, stateDirectory, emit: event => post({ type: 'event', event }),
+    log: message => process.stderr.write(`${message}\n`),
+  })
 
   process.on('message', (message: PrivateIpcInbound) => {
     if (!message || message.type !== 'request' || typeof message.id !== 'number') return

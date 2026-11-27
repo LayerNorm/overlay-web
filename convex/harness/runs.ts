@@ -290,7 +290,7 @@ const operationValidator = v.union(
     }),
     diagnostic: v.optional(v.object({
       diagnosticId: v.string(),
-      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'), v.literal('MEMBER_SPEND_LIMIT'), v.literal('WORKSPACE_PERSONAL_MODEL'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
@@ -308,7 +308,7 @@ const operationValidator = v.union(
     type: v.literal('record_diagnostic'),
     diagnostic: v.object({
       diagnosticId: v.string(),
-      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'), v.literal('MEMBER_SPEND_LIMIT'), v.literal('WORKSPACE_PERSONAL_MODEL'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
@@ -348,7 +348,7 @@ const operationValidator = v.union(
     reason: v.string(),
     diagnostic: v.optional(v.object({
       diagnosticId: v.string(),
-      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'),
+      code: v.union(v.literal('TASK_DEADLINE'), v.literal('TASK_SPEND_LIMIT'), v.literal('WORKSPACE_FUNDS'), v.literal('MEMBER_SPEND_LIMIT'), v.literal('WORKSPACE_PERSONAL_MODEL'),
         v.literal('PROVIDER_TIMEOUT'), v.literal('PROVIDER_RATE_LIMIT'), v.literal('PROVIDER_UNAVAILABLE'), v.literal('PROVIDER_REJECTED'), v.literal('PROVIDER_REQUEST_INVALID'), v.literal('PROVIDER_ACCOUNT'),
         v.literal('TOOL_FAILED'), v.literal('TOOL_OUTCOME_UNKNOWN'), v.literal('MODEL_OUTCOME_UNKNOWN'),
         v.literal('AUTHORIZATION_REVOKED'), v.literal('PERSISTENCE_FAILED'), v.literal('STAGNATION'),
@@ -1802,9 +1802,8 @@ async function inheritedRoomRestriction(
 
 /**
  * Whether what an agent learns in this conversation is workspace knowledge (`memoryOwnerForPlace`): a room others can
- * read, or a thread an agent was asked in from one. The same lineage the room rule uses, so a turn saves workspace
- * knowledge exactly when it could not read the asker's private material. Automations are not workspace contexts yet:
- * they still read their owner's private memories, so what they learn stays private until they get workspace reach (P5).
+ * read, a workspace automation's thread, or a thread an agent was asked in from one. The same lineage the room rule
+ * uses, so a turn saves workspace knowledge exactly when it could not read the asker's private material.
  */
 export async function conversationIsWorkspaceContext(
   ctx: MutationCtx | QueryCtx,
@@ -1828,7 +1827,7 @@ export const resolveConversationRoomRestrictions = mutation({
         .eq('principalId', principal.principalId)).unique() : null
     if (!workspace || workspace.status !== 'active' || workspace.archivedAt !== undefined
       || !principal || principal.type !== 'human' || principal.archivedAt !== undefined
-      || !membership || membership.status !== 'active' || membership.role === 'guest') {
+      || !membership || membership.status !== 'active') {
       throw new Error('WORKSPACE_ACCESS_DENIED')
     }
     await requireConversationAccess(ctx, {

@@ -243,6 +243,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/workspaces/:workspaceId/billing/portal', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/top-ups', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/auto-top-up', methods: { POST: authenticated() } },
+  { path: '/api/v1/workspaces/:workspaceId/billing/member-caps', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/verify', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/preview-plan', methods: { POST: authenticated() } },
   { path: '/api/v1/workspaces/:workspaceId/billing/request', methods: { POST: authenticated() } },
@@ -360,6 +361,7 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   // Called by the Convex ingestion runner with the internal API secret.
   { path: '/api/v1/files/ingest-jobs/process', methods: { POST: internal() } },
   { path: '/api/v1/harness/continuation', methods: { POST: internal() } },
+  { path: '/api/v1/harness/stalled', methods: { POST: internal() } },
   { path: '/api/v1/work/resume-assignment', methods: { POST: internal() } },
   { path: '/api/v1/files/presign', methods: { GET: capability('files.upload') } },
   { path: '/api/v1/files/search-text', methods: { POST: capability('files.read') } },
@@ -418,6 +420,8 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/mcp/authorize', methods: { POST: authenticated() } },
   { path: '/api/v1/mcp/client', methods: { GET: authenticated() } },
   { path: '/api/v1/mcp/connections', methods: { GET: authenticated(), POST: authenticated(), DELETE: authenticated() } },
+  // A private thread's tools token: the agent lookup checks the caller can see the agent in that workspace.
+  { path: '/api/v1/mcp/private-thread', methods: { POST: authenticated() } },
   { path: '/api/v1/transcribe', methods: { POST: capability('tools.use') } },
   { path: '/api/v1/extensions/:extensionId/*', methods: { ALL: capability('tools.use') } },
   {

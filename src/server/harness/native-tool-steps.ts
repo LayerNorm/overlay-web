@@ -63,7 +63,7 @@ async function freshTooling(call: NativeToolCall) {
     grant: { agentId: agent.id, allowedToolIds: agent.allowedToolIds, isDefaultMaster: Boolean(agent.isDefault) },
     approvalMode: agent.permissionMode === 'auto' ? 'auto' : 'ask', computerApprovalContext: 'work',
     ...(call.context.work ? { work: call.context.work } : {}),
-    idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText,
+    idempotencyKey: idempotencyKey(call), latestUserText: authority.latestUserText, includedItemIds: authority.includedItemIds,
     memoryEnabled: call.context.memoryEnabled, memoryAgent: agent,
     requestFingerprint: call.context.requestFingerprint,
     turnId: call.access.turnId, workspaceId: call.access.workspaceId,
@@ -327,7 +327,7 @@ export async function dispatchNativeHarnessAgentRequest(
 ): Promise<unknown> {
   'use step'
   assertNativeAgentRequest(toolCallId, toolName)
-  await refreshNativeHarnessAccess(access, context, toolName)
+  const { sharedRoom } = await refreshNativeHarnessAccess(access, context, toolName)
   const values = input && typeof input === 'object' && !Array.isArray(input)
     ? input as Record<string, unknown> : {}
   const server = getOverlayServerContext()
@@ -453,7 +453,7 @@ export async function dispatchNativeHarnessAgentRequest(
   }
 
   const caller = { agentId: access.agentId, conversationId: access.conversationId, turnId: access.turnId }
-  const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns }
+  const actor = { actorUserId: access.actorUserId, actorPrincipalId: access.principalId, workspaceId: access.workspaceId, caller, startTurns, sharedRoom }
   const progressCall: NativeToolCall = {
     access,
     context,

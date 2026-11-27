@@ -4,8 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
+import { tool } from 'ai'
 import { MockLanguageModelV4 } from 'ai/test'
-import { PrivateThreadService } from './private-threads'
+import { z } from 'zod'
+import { PrivateThreadService, withoutScreenshotImages } from './private-threads'
+import { privateComputerTools, SCREENSHOT_NOT_KEPT } from './private-threads-tools'
+import type { LocalToolExecutor } from './local-tools'
 import { PrivateThreadStore } from './private-threads-store'
 import type { PrivateEvent, PrivateUIMessage } from './private-threads-protocol'
 
@@ -37,7 +41,7 @@ function scripted(steps: LanguageModelV4StreamPart[][], gate?: Promise<void>) {
   })
 }
 
-async function fixture(model: MockLanguageModelV4) {
+async function fixture(model: MockLanguageModelV4, extra: Partial<ConstructorParameters<typeof PrivateThreadService>[0]> = {}, sendExtra: Record<string, unknown> = {}) {
   const base = await realpath(await mkdtemp(join(tmpdir(), 'overlay-private-')))
   const store = new PrivateThreadStore(join(base, 'private.sqlite'))
   const events: PrivateEvent[] = []
@@ -48,6 +52,7 @@ async function fixture(model: MockLanguageModelV4) {
   const service = new PrivateThreadService({
     store, stateDirectory: join(base, 'state'), createModel: () => model,
     emit: event => { events.push(event); settle() },
+    ...extra,
   })
   await service.handle({ method: 'create', owner, threadId: 'p1', agentId: 'agent-1', title: 'New thread', folder: base, model: null })
   const user = (text: string): PrivateUIMessage => ({ id: `u-${text.length}`, role: 'user', parts: [{ type: 'text', text }] })
@@ -56,7 +61,7 @@ async function fixture(model: MockLanguageModelV4) {
     await service.handle({
       method: 'send', owner, threadId: 'p1', turnId: `turn-${events.length}`, messages,
       model: { provider: 'anthropic', modelId: 'claude-test', apiKey: 'sk-test' },
-      agent: { name: 'Atlas', instructions: 'Be brief.' }, roots: [base], approvalMode,
+      agent: { name: 'Atlas', instructions: 'Be brief.' }, roots: [base], approvalMode, ...sendExtra,
     })
     return await ended
   }
@@ -155,4 +160,190 @@ test('requests are validated: folders must be absolute', async () => {
   try {
     await assert.rejects(f.service.handle({ method: 'create', owner, threadId: 'p2', agentId: 'a', title: 'x', folder: 'relative/path', model: null }))
   } finally { await f.cleanup() }
+})
+
+test('the agent\'s Overlay tools join the turn and the connection closes when it ends', async () => {
+  const connected: unknown[] = []
+  let closed = 0
+  let instructions = ''
+  const model = new MockLanguageModelV4({
+    doStream: async ({ prompt }) => {
+      instructions = prompt.filter(message => message.role === 'system').map(message => String(message.content)).join('\n')
+      const sawResult = prompt.some(message => message.role === 'tool')
+      const parts = sawResult ? reply('You prefer tea.') : toolCall('search_memory', { query: 'drink' })
+      return { stream: new ReadableStream({ start(c) { parts.forEach(p => c.enqueue(p)); c.close() } }) }
+    },
+  })
+  const access = { url: 'https://overlay.example/api/mcp', token: 'ovmcu_t_test.sig' }
+  const f = await fixture(model, {
+    connectOverlayTools: async (given) => {
+      connected.push(given)
+      return {
+        tools: { search_memory: tool({ inputSchema: z.object({ query: z.string() }), execute: async () => ({ memories: ['Prefers tea'] }) }) },
+        instructions: 'Overlay tools act on the person\'s Overlay workspace.',
+        close: async () => { closed++ },
+      }
+    },
+  }, { overlay: access })
+  try {
+    const ended = await f.send([f.user('What do I drink?')])
+    assert.equal(ended.kind === 'turn' && ended.state, 'finished')
+    assert.deepEqual(connected, [access])
+    assert.equal(closed, 1)
+    assert.match(instructions, /Overlay tools act on/)
+    const { messages } = await f.service.handle({ method: 'get', owner, threadId: 'p1' })
+    assert.ok(messages[1]!.parts.some(part => part.type === 'tool-search_memory' && 'state' in part && part.state === 'output-available'))
+  } finally { await f.cleanup() }
+})
+
+test('a turn runs with this computer\'s tools when Overlay\'s are unavailable, and the token stays out of the log', async () => {
+  const logs: string[] = []
+  const model = scripted([reply('Hello.')])
+  const f = await fixture(model, {
+    log: message => logs.push(message),
+    connectOverlayTools: async (_access, options) => { options.onUnavailable?.('401 for ovmcu_t_secretvalue.sig'); return null },
+  }, { overlay: { url: 'https://overlay.example/api/mcp', token: 'ovmcu_t_secretvalue.sig' } })
+  try {
+    const ended = await f.send([f.user('Hi')])
+    assert.equal(ended.kind === 'turn' && ended.state, 'finished')
+    assert.equal(logs.length, 1)
+    assert.ok(!logs[0]!.includes('secretvalue'))
+  } finally { await f.cleanup() }
+})
+
+test('Overlay tools need an https address', async () => {
+  const f = await fixture(scripted([reply('Hi.')]), {}, { overlay: { url: 'http://overlay.example/api/mcp', token: 't' } })
+  try {
+    await assert.rejects(f.send([f.user('Hi')]), /https/)
+  } finally { await f.cleanup() }
+})
+
+test('a long thread is summarized before it fills the context window, and later turns start from the summary', async () => {
+  const prompts: string[] = []
+  const summaries: string[] = []
+  const model = new MockLanguageModelV4({
+    doGenerate: async ({ prompt }) => {
+      summaries.push(JSON.stringify(prompt))
+      return {
+        content: [{ type: 'text', text: 'Earlier: the person is planning a trip to Lisbon in March and prefers trains.' }],
+        finishReason: { unified: 'stop', raw: 'stop' }, usage, warnings: [],
+      }
+    },
+    doStream: async ({ prompt }) => {
+      prompts.push(JSON.stringify(prompt))
+      const parts = reply('Noted.')
+      return { stream: new ReadableStream({ start(c) { parts.forEach(p => c.enqueue(p)); c.close() } }) }
+    },
+  })
+  const f = await fixture(model, { contextWindow: 20_000 })
+  const said = (id: string, role: 'user' | 'assistant', text: string): PrivateUIMessage => ({ id, role, parts: [{ type: 'text', text }] })
+  const old = 'OLD-HISTORY '.repeat(500)
+  const history = [
+    said('m1', 'user', `Plan a trip to Lisbon. ${old}`), said('m2', 'assistant', `Sure. ${old}`),
+    said('m3', 'user', `I prefer trains. ${old}`), said('m4', 'assistant', `Trains it is. ${old}`),
+    said('m5', 'user', `March works. ${old}`), said('m6', 'assistant', `March it is. ${old}`),
+  ]
+  try {
+    const first = await f.send([...history, said('m7', 'user', 'What did we decide?')])
+    assert.deepEqual(first.kind === 'turn' && [first.state, first.error], ['finished', undefined])
+    assert.equal(summaries.length, 1)
+    assert.match(summaries[0]!, /Summarize the supplied history/)
+    assert.match(prompts.at(-1)!, /Summary of the earlier part of this conversation/)
+    assert.ok(!prompts.at(-1)!.includes('Plan a trip to Lisbon'), 'summarized messages are not sent again')
+    assert.match(prompts.at(-1)!, /What did we decide\?/)
+    assert.deepEqual(f.store.summary('p1'), {
+      summary: 'Earlier: the person is planning a trip to Lisbon in March and prefers trains.',
+      throughMessageId: 'm6',
+    })
+
+    const { messages } = await f.service.handle({ method: 'get', owner, threadId: 'p1' })
+    assert.equal(messages.length, 8, 'the transcript on disk stays complete')
+    const second = await f.send([...messages, said('m9', 'user', 'And the hotel?')])
+    assert.equal(second.kind === 'turn' && second.state, 'finished')
+    assert.equal(summaries.length, 1, 'the saved summary is reused')
+    assert.match(prompts.at(-1)!, /planning a trip to Lisbon in March/)
+    assert.ok(!prompts.at(-1)!.includes('OLD-HISTORY'))
+    assert.match(prompts.at(-1)!, /What did we decide\?/)
+  } finally { await f.cleanup() }
+})
+
+test('a thread survives quitting mid-turn and reopening, up to its last finished step', async () => {
+  let base = ''
+  let calls = 0
+  const model = new MockLanguageModelV4({
+    doStream: async ({ abortSignal }) => {
+      calls++
+      if (calls === 1) {
+        const parts = toolCall('computer_write_file', { path: join(base, 'draft.txt'), contents: 'step one' })
+        return { stream: new ReadableStream({ start(c) { parts.forEach(p => c.enqueue(p)); c.close() } }) }
+      }
+      return { stream: new ReadableStream<LanguageModelV4StreamPart>({
+        async start(controller) {
+          await new Promise(resolve => abortSignal?.addEventListener('abort', resolve))
+          controller.error(abortSignal?.reason)
+        },
+      }) }
+    },
+  })
+  const f = await fixture(model)
+  base = f.base
+  try {
+    void f.send([f.user('Draft it')], 'auto')
+    for (let waited = 0; waited < 5_000 && calls < 2; waited += 20) await new Promise(resolve => setTimeout(resolve, 20))
+    await new Promise(resolve => setTimeout(resolve, 100))
+    await f.service.shutdown()
+    f.store.close()
+
+    const reopened = new PrivateThreadStore(join(f.base, 'private.sqlite'))
+    try {
+      const service = new PrivateThreadService({ store: reopened, stateDirectory: join(f.base, 'state'), emit: () => undefined })
+      const { thread, messages, running } = await service.handle({ method: 'get', owner, threadId: 'p1' })
+      assert.equal(thread.title, 'Draft it')
+      assert.equal(running, false)
+      assert.equal(messages[0]!.role, 'user')
+      const write = messages[1]?.parts.find(part => part.type === 'tool-computer_write_file') as { state?: string } | undefined
+      assert.equal(write?.state, 'output-available')
+      assert.equal(await readFile(join(f.base, 'draft.txt'), 'utf8'), 'step one')
+    } finally { reopened.close() }
+  } finally { await rm(f.base, { recursive: true, force: true }) }
+})
+
+test('screenshot images of finished turns are not kept or sent again', () => {
+  const shot = { type: 'tool-computer_screenshot', toolCallId: 's1', state: 'output-available', input: {},
+    output: { width: 10, height: 10, mediaType: 'image/jpeg', imageBase64: 'AAAA' } }
+  const turn = (id: string): PrivateUIMessage => ({ id, role: 'assistant', parts: [shot as never] })
+  const messages = [f_user('look'), turn('a1'), f_user('again'), turn('a2')]
+  const stripped = withoutScreenshotImages(messages, { keepLast: true })
+  assert.deepEqual((stripped[1]!.parts[0] as { output: object }).output, { width: 10, height: 10, mediaType: 'image/jpeg', message: SCREENSHOT_NOT_KEPT })
+  assert.equal(stripped[3], messages[3], 'a turn that is continuing keeps its images')
+  assert.ok(!JSON.stringify(withoutScreenshotImages(messages, { keepLast: false })).includes('AAAA'))
+})
+
+function f_user(text: string): PrivateUIMessage {
+  return { id: `u-${text}`, role: 'user', parts: [{ type: 'text', text }] }
+}
+
+test('computer tools follow the platform and the shared approval rules', async () => {
+  const executor = {} as LocalToolExecutor
+  const tools = (platform: NodeJS.Platform, approvalMode: 'ask' | 'auto' = 'ask') =>
+    privateComputerTools({ executor, approvalMode, abortSignal: new AbortController().signal, platform })
+  const base = ['computer_exec', 'computer_list_files', 'computer_read_file', 'computer_terminal', 'computer_write_file']
+  assert.deepEqual(Object.keys(tools('win32')).sort(), base)
+  assert.deepEqual(Object.keys(tools('linux')).sort(), [...base, 'computer_browser', 'computer_open_url'].sort())
+  assert.deepEqual(Object.keys(tools('darwin')).sort(),
+    [...base, 'computer_browser', 'computer_input', 'computer_open_url', 'computer_screenshot'].sort())
+  const asks = async (set: ReturnType<typeof tools>, name: string, input: unknown) => {
+    const needsApproval = set[name]!.needsApproval
+    return typeof needsApproval === 'function'
+      ? await needsApproval(input as never, { toolCallId: 'x', messages: [] } as never)
+      : Boolean(needsApproval)
+  }
+  const mac = tools('darwin')
+  assert.equal(await asks(mac, 'computer_browser', { action: 'snapshot' }), false)
+  assert.equal(await asks(mac, 'computer_browser', { action: 'type', ref: 'e1', text: 'hi' }), true)
+  assert.equal(await asks(mac, 'computer_input', { action: 'click', x: 1, y: 1 }), false)
+  assert.equal(await asks(mac, 'computer_input', { action: 'click', x: 1, y: 1, confirm: true }), true)
+  assert.equal(await asks(mac, 'computer_terminal', { action: 'read', id: 't-0123456789ab' }), false)
+  assert.equal(await asks(mac, 'computer_exec', { command: 'ls' }), true)
+  assert.equal(await asks(tools('darwin', 'auto'), 'computer_exec', { command: 'ls' }), false)
 })

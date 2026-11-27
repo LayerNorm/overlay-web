@@ -23,8 +23,20 @@ test('a catalog model is accepted and an invented one is refused with the defaul
 
 test('a connected model is checked against the person\'s own connection instead of the catalog', async () => {
   await expect(assertAgentModelSelectable('byok/connection/model', 'user', 'workspace')).resolves.toBeUndefined()
-  expect(mocks.byok).toHaveBeenCalledExactlyOnceWith('byok/connection/model', 'user', 'workspace')
+  expect(mocks.byok).toHaveBeenCalledExactlyOnceWith('byok/connection/model', 'user', 'workspace', { workspaceOnly: true })
   mocks.byok.mockRejectedValueOnce(new Error('BYOK connection not found.'))
   await expect(assertAgentModelSelectable('byok/other/model', 'user', 'workspace')).rejects.toMatchObject({ code: 'validation' })
   expect(mocks.catalog).not.toHaveBeenCalled()
+})
+
+test('a workspace agent may not use a personal provider; a creator-only agent may', async () => {
+  const { WORKSPACE_RUN_PERSONAL_MODEL_ERROR } = await import('@/shared/ai/workspace-run-model')
+  mocks.byok.mockImplementation(async (_model: string, _user: string, _workspace: string, options: { workspaceOnly?: boolean }) => {
+    if (options.workspaceOnly) throw new Error(WORKSPACE_RUN_PERSONAL_MODEL_ERROR)
+    return {}
+  })
+  await expect(assertAgentModelSelectable('byok/personal/model', 'user', 'workspace', 'workspace')).rejects.toMatchObject({
+    code: 'validation', message: expect.stringContaining('Workspace agents can only use Overlay models'),
+  })
+  await expect(assertAgentModelSelectable('byok/personal/model', 'user', 'workspace', 'creator')).resolves.toBeUndefined()
 })

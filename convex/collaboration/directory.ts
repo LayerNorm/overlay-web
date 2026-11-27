@@ -3,6 +3,7 @@ import { canManageWorkspace, DEFAULT_WORKSPACE_POLICY } from '@overlay/workspace
 import type { Doc } from '../_generated/dataModel'
 import type { QueryCtx } from '../_generated/server'
 import { query } from '../_generated/server'
+import { requireServerSecret } from '../lib/auth'
 import { nativeViewer, requireNativeWorkspace } from '../lib/nativeViewer'
 import { resolveWorkspaceHandleFor, sharingPolicyValue, workspaceValue } from './workspaces'
 
@@ -116,3 +117,31 @@ export const policy = query({
     }
   },
 })
+
+/**
+ * Names for the people behind items an agent tool lists (who made a note, a file, a task), so a result can say whose it
+ * is. Server-only; the asker must be an active member, and only the workspace's own human principals are named.
+ */
+export const memberNamesByServer = query({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string(), userIds: v.array(v.string()) },
+  handler: async (ctx, args): Promise<Record<string, string>> => {
+    requireServerSecret(args.serverSecret)
+    if (!(await isActiveMember(ctx, args.workspaceId, args.userId))) return {}
+    const names: Record<string, string> = {}
+    for (const userId of new Set(args.userIds.slice(0, 50))) {
+      const principal = await ctx.db.query('workspacePrincipals')
+        .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', args.workspaceId).eq('userId', userId)).first()
+      if (principal?.type === 'human' && principal.archivedAt === undefined) names[userId] = principal.displayName
+    }
+    return names
+  },
+})
+
+async function isActiveMember(ctx: Pick<QueryCtx, 'db'>, workspaceId: string, userId: string): Promise<boolean> {
+  const principal = await ctx.db.query('workspacePrincipals')
+    .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', userId)).first()
+  if (!principal || principal.archivedAt !== undefined) return false
+  const membership = await ctx.db.query('workspaceMemberships')
+    .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId)).first()
+  return membership?.status === 'active'
+}

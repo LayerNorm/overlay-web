@@ -62,7 +62,7 @@ async function requireRequester(ctx: DbContext, args: { workspaceId: string; req
   const membership = await ctx.db.query('workspaceMemberships')
     .withIndex('by_workspaceId_principalId', q => q.eq('workspaceId', args.workspaceId).eq('principalId', principal.principalId))
     .unique()
-  if (!membership || membership.status !== 'active' || membership.role === 'guest') {
+  if (!membership || membership.status !== 'active') {
     throw new Error('WORKSPACE_MEMBER_REQUIRED')
   }
   return principal

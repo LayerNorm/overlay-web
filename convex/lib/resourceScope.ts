@@ -37,7 +37,7 @@ export async function loadScopeContext(ctx: Reader, workspaceId: string, userId:
       .query('workspaceMemberships')
       .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId))
       .unique()
-    if (membership?.status === 'active') role = membership.role as ResourceViewer['role']
+    if (membership?.status === 'active') role = membership.role
   }
   const row = await ctx.db
     .query('workspaceSharingPolicies')

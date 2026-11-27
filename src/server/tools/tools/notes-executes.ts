@@ -1,5 +1,5 @@
 import 'server-only'
-import { roomListScope } from './room-scope'
+import { refusesRoomItem, roomCreateScope, roomListScope, ROOM_PERSONAL_ITEM_ERROR } from './room-scope'
 
 import {
   appendToNote,
@@ -14,6 +14,7 @@ import type { NoteDoc } from '@overlay/app-core'
 import { buildWorkspaceHref } from '@/shared/workspaces/routing'
 import { callInternalApi, callInternalApiGet, toolAuthBody } from './internal-api'
 import type { OverlayToolsOptions } from './types'
+import { ownerField, ownerNamesFor } from './owner-names'
 
 /**
  * Agent note tools. Notes are Markdown, and every write goes through
@@ -58,7 +59,17 @@ async function fetchNote(options: OverlayToolsOptions, noteId: string): Promise<
     options.workspaceId,
   )
   if (!res.ok) return { success: false, error: await errorMessage(res, 'Note not found') }
-  return await res.json() as NoteDoc
+  const note = await res.json() as NoteDoc
+  // Every read and edit by id goes through here: a workspace context reaches only Workspace notes.
+  if (refusesRoomItem(options, note)) return { success: false, error: ROOM_PERSONAL_ITEM_ERROR }
+  return note
+}
+
+/** update_note and delete_note write without reading first; in a workspace context, check the note's scope. */
+async function roomNoteRefusal(options: OverlayToolsOptions, noteId: string): Promise<ToolFailure | null> {
+  if (!options.sharedRoom) return null
+  const note = await fetchNote(options, noteId)
+  return 'success' in note ? note : null
 }
 
 type WriteResult =
@@ -178,17 +189,18 @@ export async function executeListNotes(
       cursor = page.hasMore ? page.nextCursor : undefined
       truncated = Boolean(cursor)
     } while (cursor && notes.length < LIST_NOTES_LIMIT)
+    const listed = notes.sort((a, b) => b.updatedAt - a.updatedAt).slice(0, LIST_NOTES_LIMIT)
+    const ownerOf = await ownerNamesFor(options, listed.map((note) => note.userId))
     return {
       success: true,
-      notes: notes
-        .sort((a, b) => b.updatedAt - a.updatedAt)
-        .slice(0, LIST_NOTES_LIMIT)
-        .map((note) => ({
-          noteId: note._id,
-          title: note.title || 'Untitled',
-          tags: note.tags ?? [],
-          updatedAt: note.updatedAt,
-        })),
+      notes: listed.map((note) => ({
+        noteId: note._id,
+        title: note.title || 'Untitled',
+        tags: note.tags ?? [],
+        updatedAt: note.updatedAt,
+        scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+        ...ownerField(ownerOf(note.userId)),
+      })),
       ...(truncated || notes.length > LIST_NOTES_LIMIT ? { truncated: true } : {}),
     }
   } catch (err) {
@@ -200,6 +212,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
   try {
     const note = await fetchNote(options, input.noteId)
     if ('success' in note) return note
+    const ownerOf = await ownerNamesFor(options, [note.userId])
     return {
       success: true,
       note: {
@@ -208,6 +221,8 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
         title: note.title || 'Untitled',
         content: note.content,
         tags: note.tags ?? [],
+        scope: note.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
+        ...ownerField(ownerOf(note.userId)),
         revision: revisionOf(note),
         outline: noteOutline(note.content),
         updatedAt: note.updatedAt,
@@ -220,7 +235,7 @@ export async function executeGetNote(options: OverlayToolsOptions, input: { note
 
 export async function executeCreateNote(
   options: OverlayToolsOptions,
-  input: { title?: string; content: string; tags?: string[] },
+  input: { title?: string; content: string; tags?: string[]; scope?: 'personal' | 'workspace' },
 ) {
   try {
     const title = input.title?.trim() || 'Untitled'
@@ -231,6 +246,7 @@ export async function executeCreateNote(
         title,
         byAgent: true,
         content: input.content,
+        scope: roomCreateScope(options, input.scope),
         ...(input.tags ? { tags: input.tags } : {}),
         ...(options.conversationId ? { conversationId: options.conversationId } : {}),
         ...toolAuthBody(options),
@@ -265,6 +281,8 @@ export async function executeUpdateNote(
     if (input.expectedRevision && !Number.isFinite(expectedUpdatedAt)) {
       return { success: false, error: 'expectedRevision must be the revision returned by get_note.' }
     }
+    const refused = await roomNoteRefusal(options, input.noteId)
+    if (refused) return refused
     const written = await writeNote(options, {
       noteId: input.noteId.trim(),
       ...(input.title !== undefined ? { title: input.title } : {}),
@@ -330,6 +348,8 @@ export async function executeEditNote(
 
 export async function executeDeleteNote(options: OverlayToolsOptions, input: { noteId: string }) {
   try {
+    const refused = await roomNoteRefusal(options, input.noteId)
+    if (refused) return refused
     const params = new URLSearchParams({ noteId: input.noteId.trim() })
     const res = await callInternalApi(
       `${NOTES_PATH}?${params}`,

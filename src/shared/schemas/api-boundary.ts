@@ -801,6 +801,12 @@ export const webApiBoundaryDefinitions = [
     publicReference: false,
   },
   { method: 'DELETE', path: '/api/v1/mcp/connections', schema: { query: z.object({ id: z.string().min(1) }), response: UnknownResponse }, summary: 'Disconnect an AI app or revoke a token', tag: 'MCP access', publicReference: false },
+  {
+    method: 'POST', path: '/api/v1/mcp/private-thread',
+    schema: { json: z.object({ workspaceId: z.string().min(1).max(256), agentId: z.string().min(1).max(256) }).strict(), response: UnknownResponse },
+    summary: 'Get a short-lived MCP token for one private thread turn on Overlay Desktop', tag: 'MCP access',
+    publicReference: false,
+  },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },
@@ -1015,6 +1021,7 @@ export const webApiBoundaryDefinitions = [
 export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/work/resume-assignment', reason: 'Private dependency-release callback authenticated by the internal API secret, with fenced assignment claims.' },
   { routePath: '/api/v1/harness/continuation', reason: 'Private continuation callback requires the internal API secret and is excluded from the public web API reference.' },
+  { routePath: '/api/v1/harness/stalled', reason: 'Private stalled-run sweep callback from Convex; requires the internal API secret and is excluded from the public web API reference.' },
   {
     routePath: '/api/v1/mcps/oauth/callback',
     reason: 'Third-party OAuth redirect and desktop confirmation flow; it is protected by single-use state rather than the public API authentication scheme.',
@@ -1074,6 +1081,7 @@ export const webApiExcludedRouteDefinitions = [
   { routePath: '/api/v1/workspaces', reason: 'Workspace management; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/audit-export', reason: 'Workspace audit export; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing', reason: 'Workspace billing management; boundary definition pending. Protected by workspace authorization.' },
+  { routePath: '/api/v1/workspaces/[workspaceId]/billing/member-caps', reason: 'Per-person spending caps; boundary definition pending. Protected by workspace owner/admin authorization in billing/memberSpend:setMemberCapByServer and validated in the route.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/auto-top-up', reason: 'Workspace automatic top-up policy; boundary definition pending. Protected by workspace owner/admin authorization and validated by the billing service.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/checkout', reason: 'Workspace billing checkout; boundary definition pending. Protected by workspace authorization.' },
   { routePath: '/api/v1/workspaces/[workspaceId]/billing/portal', reason: 'Workspace billing portal; boundary definition pending. Protected by workspace authorization.' },

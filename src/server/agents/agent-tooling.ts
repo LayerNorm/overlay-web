@@ -92,6 +92,8 @@ export function applyAgentCapabilityFilter(args: {
  * it: nothing is attributed to an agent, memory is the person's own (so every app
  * they connect shares one memory), and there is no conversation to attach to.
  */
+export const EXTERNAL_APP_API_RUN_WAIT_MS = 4 * 60_000
+
 export async function buildExternalAppTooling(args: {
   actorUserId: string
   effectiveModelId: string
@@ -111,6 +113,8 @@ export async function buildExternalAppTooling(args: {
     effectiveModelId: args.effectiveModelId,
     entitlements: args.entitlements,
     grantedToolSurface: true,
+    // The MCP route stops at 300 s: leave time to stop and settle a Monid run before the request is cut off.
+    apiRunWaitMs: EXTERNAL_APP_API_RUN_WAIT_MS,
     idempotencyKey: args.idempotencyKey,
     mediaToolIntent: null,
     memoryEnabled: true,
@@ -171,6 +175,8 @@ export async function buildWorkspaceAgentTooling(args: {
   /** Stable per-turn key so a retried turn does not repeat side effects. */
   idempotencyKey: string
   latestUserText?: string
+  /** Personal items the asking message included on purpose; reachable even in a room others can read. */
+  includedItemIds?: readonly string[]
   memoryEnabled: boolean
   /** The agent whose memories this turn saves; `memoryOwnerForPlace` picks the owner from the room. */
   memoryAgent: MemoryPlaceAgent
@@ -199,7 +205,8 @@ export async function buildWorkspaceAgentTooling(args: {
   const assignmentToolIds = assignedTaskId ? assignedTaskToolIdsToAdd(overlayToolIds) : []
   // The Local computer group applies to a thread its owner set to run on their own computer. It is separate from
   // the Cloud computer group, so an agent without a cloud machine can still work locally.
-  const localThreadToolIds = localThreadComputerToolIds(args.work, capabilities)
+  // Never in a room others can read: a person's own computer is theirs alone.
+  const localThreadToolIds = sharedRoom ? [] : localThreadComputerToolIds(args.work, capabilities)
   const tooling = await prepareActTooling({
     accessToken: args.accessToken,
     // The agent's overlay grant enters as account policy, which the pipeline
@@ -220,6 +227,7 @@ export async function buildWorkspaceAgentTooling(args: {
     idempotencyKey: args.idempotencyKey,
     artifactPublicationAuthority: args.artifactPublicationAuthority,
     latestUserText: args.latestUserText,
+    ...(args.includedItemIds?.length ? { includedItemIds: args.includedItemIds } : {}),
     mediaToolIntent: null,
     memoryEnabled: args.memoryEnabled,
     memoryOwnerId: memoryOwnerForPlace({

@@ -1,5 +1,7 @@
 import type { Doc } from '../_generated/dataModel'
 import type { MutationCtx } from '../_generated/server'
+import { rolledSpendLimitWindow } from '../../src/shared/billing/spend-limit-period'
+import { limitRowReached, spendSubjectsFor } from './spendLimitCharges'
 
 type SpendSubject = { kind: 'member' | 'programmatic'; id: string }
 type HeldLimit = { id: string; periodStart: number }
@@ -19,11 +21,8 @@ export async function chargeSandboxSpendLimits(ctx: MutationCtx, input: {
   chargeMicros: number
   now: number
 }): Promise<{ limitReached: boolean }> {
-  const subjects: SpendSubject[] = [{ kind: 'member', id: input.userId }]
-  if (input.spendSubjectKind && input.spendSubjectId
-    && !(input.spendSubjectKind === 'member' && input.spendSubjectId === input.userId)) {
-    subjects.push({ kind: input.spendSubjectKind, id: input.spendSubjectId })
-  }
+  const subjects = spendSubjectsFor(input.userId, input.spendSubjectKind && input.spendSubjectId
+    ? { kind: input.spendSubjectKind, id: input.spendSubjectId } : undefined)
   let limitReached = false
   for (const subject of subjects) {
     const row = await ctx.db.query('billingAccountSpendLimits')
@@ -31,14 +30,14 @@ export async function chargeSandboxSpendLimits(ctx: MutationCtx, input: {
         .eq('subjectKind', subject.kind).eq('subjectId', subject.id)).unique()
     if (!row) continue
     const heldMicros = legacyHeldLimitMicros(row, input.usage, input.previousHoldMicros)
-    const usedMicros = row.usedMicros + input.chargeMicros
+    // A cap renews each period: a finished one starts again from nothing before this charge.
+    const rolled = rolledSpendLimitWindow(row, input.now)
+    const usedMicros = (rolled ? 0 : row.usedMicros) + input.chargeMicros
     const reservedMicros = row.reservedMicros - heldMicros
-    if (input.chargeMicros > 0 || heldMicros > 0) {
-      await ctx.db.patch(row._id, { reservedMicros, usedMicros, updatedAt: input.now, version: row.version + 1 })
+    if (input.chargeMicros > 0 || heldMicros > 0 || rolled) {
+      await ctx.db.patch(row._id, { ...(rolled ?? {}), reservedMicros, usedMicros, updatedAt: input.now, version: row.version + 1 })
     }
-    if (input.now < row.periodStart || input.now >= row.periodEnd || usedMicros + reservedMicros >= row.limitMicros) {
-      limitReached = true
-    }
+    if (limitRowReached({ ...row, ...(rolled ?? {}), usedMicros, reservedMicros }, input.now)) limitReached = true
   }
   return { limitReached }
 }

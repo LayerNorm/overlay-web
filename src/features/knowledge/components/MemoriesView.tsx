@@ -141,18 +141,17 @@ function useMemoryMembers({
 }: {
   activeWorkspaceId: string | null | undefined
 }) {
-  // Live: members and guests joining, leaving or renamed update the owner filter.
+  // Live: members joining, leaving or renamed update the owner filter.
   const livePeople = useLiveWorkspaceManagement(activeWorkspaceId, 'people')
-  const liveGuests = useLiveWorkspaceManagement(activeWorkspaceId, 'guests')
   const people = useMemo<MemoryMemberOption[]>(() => {
     const byPrincipalId = new Map<string, MemoryMemberOption>()
-    for (const item of [...(livePeople?.items ?? []), ...(liveGuests?.items ?? [])]) {
+    for (const item of livePeople?.items ?? []) {
       if (item.kind === 'member' && item.principalId && item.status === 'active') {
         byPrincipalId.set(item.principalId, { name: item.name, principalId: item.principalId })
       }
     }
     return [...byPrincipalId.values()].sort((a, b) => a.name.localeCompare(b.name))
-  }, [liveGuests, livePeople])
+  }, [livePeople])
   const { agents: directoryAgents } = useAgentDirectory()
   const [selectedMemberPrincipalId, setSelectedMemberPrincipalId] = useState('all')
   const [selectionMode, setSelectionMode] = useState(false)

@@ -13,30 +13,31 @@ import {
   ProviderChoicePanel,
   SubscriptionFooter,
   SubscriptionPrivacyNote,
-  SubscriptionScopeSelector,
+  SubscriptionScopeNote,
 } from './SubscriptionDialogPanels'
 import { useSubscriptionConnection } from './use-subscription-connection'
 import { OPENCODE_SUBSCRIPTION_ID, OPENCODE_SUBSCRIPTION_OPTION, OpenCodeFooter, OpenCodeKeyPanel, useOpenCodeConnection } from './OpenCodeSubscriptionPanel'
 
 const EXTRA_SUBSCRIPTION_PROVIDERS = [OPENCODE_SUBSCRIPTION_OPTION]
 
-type Props = { connection?: ByokConnectionRow; onClose(): void; onConnected(): Promise<void> | void }
+/** `scope` is where a new connection lands: the mode the person is in (Personal, or the Workspace everyone uses). */
+type Props = { connection?: ByokConnectionRow; scope: SubscriptionScope; onClose(): void; onConnected(): Promise<void> | void }
 
 export function ConnectProviderDialog(props: Props) {
   const workspace = useOptionalWorkspace()
   const workspaceReady = !workspace || (workspace.status === 'ready' && !workspace.switchingWorkspaceId)
   const [kind, setKind] = useState<'subscription' | 'api-key'>('subscription')
   const [busy, setBusy] = useState(false)
-  const tabs = <div className="flex gap-1 rounded-lg bg-(--surface-muted) p-1" aria-label="Connection type">
+  const tabs = <div className="space-y-2"><div className="flex gap-1 rounded-lg bg-(--surface-muted) p-1" aria-label="Connection type">
     <Button variant={kind === 'subscription' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={kind === 'subscription'} disabled={busy} onClick={() => setKind('subscription')}>Subscription</Button>
     <Button variant={kind === 'api-key' ? 'secondary' : 'ghost'} size="sm" className="flex-1" aria-pressed={kind === 'api-key'} disabled={busy} onClick={() => setKind('api-key')}><KeyRound size={13} />API key</Button>
-  </div>
-  if (kind === 'api-key' && !props.connection) return <ProviderDialog state={{ mode: 'add' }} busy={busy} onBusyChange={setBusy} onClose={props.onClose} onSaved={() => { void props.onConnected(); props.onClose() }} intro={tabs} />
-  return <SubscriptionDialog key={`${props.connection?._id ?? 'new'}:${workspace?.activeWorkspaceId ?? 'personal'}`} {...props} workspaceId={workspace?.activeWorkspaceId ?? undefined} workspaceReady={workspaceReady} workspaceName={workspace?.activeWorkspace?.name} tabs={props.connection ? null : tabs} />
+  </div><SubscriptionScopeNote scope={props.connection?.scope ?? props.scope} workspaceName={workspace?.activeWorkspace?.name} /></div>
+  if (kind === 'api-key' && !props.connection) return <ProviderDialog state={{ mode: 'add', scope: props.scope }} busy={busy} onBusyChange={setBusy} onClose={props.onClose} onSaved={() => { void props.onConnected(); props.onClose() }} intro={tabs} />
+  return <SubscriptionDialog key={`${props.connection?._id ?? 'new'}:${workspace?.activeWorkspaceId ?? 'personal'}`} {...props} workspaceId={workspace?.activeWorkspaceId ?? undefined} workspaceReady={workspaceReady} tabs={props.connection ? null : tabs} />
 }
 
-function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceId, workspaceReady, workspaceName }: Props & { tabs: React.ReactNode; workspaceId?: string; workspaceReady: boolean; workspaceName?: string }) {
-  const [scope, setScope] = useState<SubscriptionScope>(connection?.scope ?? 'personal')
+function SubscriptionDialog({ connection, scope: modeScope, onClose, onConnected, tabs, workspaceId, workspaceReady }: Props & { tabs: React.ReactNode; workspaceId?: string; workspaceReady: boolean; workspaceName?: string }) {
+  const scope: SubscriptionScope = connection?.scope ?? modeScope
   const flow = useSubscriptionConnection({ connection, scope, workspaceId, onConnected, onClose })
   const [providerId, setProviderId] = useState(connection?.providerId.replace(/^subscription:/, '') ?? '')
   const [copied, setCopied] = useState(false)
@@ -79,7 +80,6 @@ function SubscriptionDialog({ connection, onClose, onConnected, tabs, workspaceI
           }}
         />
         : <>
-          {isOpenCode ? null : <SubscriptionScopeSelector scope={scope} onScopeChange={setScope} workspaceName={workspaceName} workspaceAvailable={Boolean(workspaceId) && workspaceReady} disabled={flow.busy || flow.selectionLocked} />}
           <ProviderChoicePanel
           flow={flow}
           connection={connection}

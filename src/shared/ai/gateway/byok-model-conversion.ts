@@ -252,6 +252,7 @@ export function byokConnectionToChatModels(connection: ByokConnectionRow): ChatM
       provider,
       sourceLabel: showsAsSubscription ? 'Subscription' : 'API key',
       connectionName: connection.displayName,
+      connectionScope: connection.scope === 'workspace' ? 'workspace' as const : 'personal' as const,
       ...(showsAsSubscription ? { subscription: {
         connectionId: connection._id,
         scopeLabel: connection.scope === 'workspace' ? 'Workspace' : 'Personal',
@@ -291,4 +292,15 @@ export function byokConnectionsToChatModels(
     models.push(...byokConnectionToChatModels(connection))
   }
   return models
+}
+
+/**
+ * The models an agent may run on. A workspace agent works for everyone, so it may use Overlay's hosted models and the
+ * workspace's own provider connections, never someone's personal key or subscription. A personal agent may use either.
+ */
+export function modelsForAgentVisibility<T extends Pick<ChatModel, 'connectionScope'>>(
+  models: readonly T[],
+  visibility: 'workspace' | 'creator' | undefined,
+): T[] {
+  return (visibility ?? 'workspace') === 'creator' ? [...models] : models.filter((model) => model.connectionScope !== 'personal')
 }

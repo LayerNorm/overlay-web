@@ -1,7 +1,7 @@
 import 'server-only'
 
 import { WorkOS } from '@workos-inc/node'
-import { createSession } from './workos-auth'
+import { createSignedInSession } from './workos-auth'
 import { previewLoginResponse } from './preview-login-policy'
 import { deploymentEnv } from '@/server/env/deployment-env'
 
@@ -24,7 +24,7 @@ export function handlePreviewLogin(request: Request, rateLimit: () => Promise<Re
         },
       }
     },
-    saveSession: createSession,
+    saveSession: createSignedInSession,
     rateLimit,
   })
 }

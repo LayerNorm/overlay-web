@@ -44,7 +44,7 @@ export function createHarnessAuthorizedTools(
   ports: HarnessExecutionPorts,
   controls: Set<string>,
   initialApprovals?: Parameters<typeof createHarnessToolApprovals>[0],
-  guard?: { publicProgress(): boolean },
+  guard?: { publicProgress(): boolean; toolStarted?(name: string): void },
 ): { tools: ToolSet; approvals: HarnessToolApprovals } {
   const approvals = createHarnessToolApprovals(initialApprovals)
   const definitions = { ...surfaceTools, ...createHarnessControlTools(ports) }
@@ -95,6 +95,7 @@ export function createHarnessAuthorizedTools(
             input: unknown,
             options: HarnessToolExecutionOptions,
           ) => unknown
+          guard?.toolStarted?.(name)
           try {
             return await invoke(value, { ...options, harnessApproved: approvals.consume(name, options.toolCallId, value) })
           } catch (error) {

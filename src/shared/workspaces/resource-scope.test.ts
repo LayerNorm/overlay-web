@@ -19,9 +19,8 @@ const owner: ResourceViewer = { userId: 'owner', role: 'owner' }
 const admin: ResourceViewer = { userId: 'admin', role: 'admin' }
 const member: ResourceViewer = { userId: 'member', role: 'member' }
 const other: ResourceViewer = { userId: 'other', role: 'member' }
-const guest: ResourceViewer = { userId: 'guest', role: 'guest' }
 const outsider: ResourceViewer = { userId: 'out', role: null }
-const everyone = [owner, admin, member, other, guest, outsider]
+const everyone = [owner, admin, member, other, outsider]
 
 const personalByMember: ScopedRow = { userId: 'member', scope: 'personal' }
 const workspaceByMember: ScopedRow = { userId: 'member', scope: 'workspace' }
@@ -35,7 +34,7 @@ test('rows from before scopes existed are personal; an archived row reports the 
   assert.equal(rowScope({ userId: 'm', archivedAt: 5 }), 'personal')
 })
 
-test('read: personal is the creator only, workspace is every active member, guests and outsiders see nothing', () => {
+test('read: personal is the creator only, workspace is every active member, outsiders see nothing', () => {
   const readers = (row: ScopedRow) => everyone.filter((viewer) => canReadResource(row, viewer)).map((viewer) => viewer.userId)
   assert.deepEqual(readers(personalByMember), ['member'])
   assert.deepEqual(readers(legacy), ['member'])
@@ -49,7 +48,7 @@ test('create: personal is always allowed for members; workspace follows the admi
   const policy = (patch: Partial<ResourceScopePolicy>): ResourceScopePolicy => ({ ...DEFAULT_RESOURCE_SCOPE_POLICY, ...patch })
   for (const kind of ['extension', 'content'] as const) {
     assert.equal(canCreateInScope(kind, 'personal', member), true)
-    assert.equal(canCreateInScope(kind, 'personal', guest), false)
+    assert.equal(canCreateInScope(kind, 'personal', outsider), false)
     assert.equal(canCreateInScope(kind, 'workspace', member), true, 'default: anyone in the workspace')
     assert.equal(canCreateInScope(kind, 'workspace', outsider), false)
   }
@@ -72,7 +71,7 @@ test('edit and archive: the creator always; owners and admins only for workspace
 
 test('move: only the creator, and not for archived rows or the scope they are already in', () => {
   assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', member), { ok: true })
-  for (const viewer of [owner, admin, other, guest, outsider]) {
+  for (const viewer of [owner, admin, other, outsider]) {
     assert.deepEqual(checkMoveResource('content', personalByMember, 'workspace', viewer), { ok: false, reason: 'not_creator' }, `${viewer.userId} cannot move someone else's item`)
   }
   assert.deepEqual(checkMoveResource('content', { ...personalByMember, archivedAt: 1 }, 'workspace', member), { ok: false, reason: 'archived' })

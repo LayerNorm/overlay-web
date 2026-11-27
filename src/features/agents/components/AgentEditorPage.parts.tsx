@@ -344,7 +344,7 @@ export function AgentEditorView({
         ) : mode === 'new' && !canCreate ? (
           <div className="mx-auto w-full max-w-2xl rounded-xl border border-(--border) bg-(--surface-elevated) p-8 text-center">
             <p className="text-sm font-medium text-(--foreground)">You cannot create agents in this workspace</p>
-            <p className="mt-1 text-xs leading-5 text-(--muted)">Guests can chat with agents but cannot create new ones.</p>
+            <p className="mt-1 text-xs leading-5 text-(--muted)">Ask a workspace owner or admin for access.</p>
             <Button variant="secondary" size="sm" className="mt-4" onClick={closeEditor}>Back to agents</Button>
           </div>
         ) : (

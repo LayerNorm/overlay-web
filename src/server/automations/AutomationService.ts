@@ -115,6 +115,7 @@ type UpdateAutomationBody = {
 }
 
 const AUTOMATION_CONFLICT_MESSAGE = 'This automation changed elsewhere. Reload it before saving your edits.'
+const AUTOMATION_ARCHIVED_MESSAGE = 'This automation is archived. Restore it before turning it on.'
 
 function serviceError(payload: Record<string, unknown>, statusCode: number): never {
   throw new AutomationServiceError(payload, statusCode)
@@ -161,6 +162,7 @@ export class AutomationService {
     userId: string
     view?: 'personal' | 'workspace' | 'archived'
     workspaceId?: string
+    beforeUpdatedAt?: number
   }): Promise<unknown> {
     if (args.automationId && args.includeRuns) {
       return await this.deps.repository.listRuns({
@@ -182,6 +184,7 @@ export class AutomationService {
       includeDeleted: args.includeDeleted,
       workspaceId: args.workspaceId,
       view: args.view,
+      ...(args.beforeUpdatedAt !== undefined ? { beforeUpdatedAt: args.beforeUpdatedAt } : {}),
     })
   }
 
@@ -292,6 +295,9 @@ export class AutomationService {
       } catch (error) {
         if (error instanceof Error && error.message.includes('AUTOMATION_CONFLICT')) {
           serviceError({ error: AUTOMATION_CONFLICT_MESSAGE, conflict: true }, 409)
+        }
+        if (error instanceof Error && error.message.includes('AUTOMATION_ARCHIVED')) {
+          serviceError({ error: AUTOMATION_ARCHIVED_MESSAGE }, 409)
         }
         throw error
       }

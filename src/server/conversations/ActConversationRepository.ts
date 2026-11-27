@@ -1,4 +1,5 @@
 import 'server-only'
+import type { IncludedItem } from '@/shared/agents/included-items'
 
 declare const conversationIdBrand: unique symbol
 /**
@@ -110,6 +111,8 @@ export type ConversationMessageRow = {
   deletedAt?: number
   authorPrincipalId?: string
   authorKind?: 'human' | 'agent' | 'model' | 'system'
+  /** Personal items the human author included on purpose (room messages only). */
+  includedItems?: IncludedItem[]
   importedAuthorName?: string
   importedAuthorEmail?: string
   importedAuthorStatus?: 'member' | 'invited' | 'not_invited'

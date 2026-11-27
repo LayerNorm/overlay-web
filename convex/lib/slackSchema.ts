@@ -50,7 +50,6 @@ export const slackTables = {
     workspaceId: v.string(),
     whoCanAsk: slackWhoCanAskValidator,
     unlinkedPeople: slackUnlinkedPeopleValidator,
-    guests: v.boolean(),
     slackConnect: v.boolean(),
     actionsInChannels: slackActionsValidator,
     updatedByUserId: v.string(),

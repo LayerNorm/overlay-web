@@ -9,11 +9,12 @@ One toggle per thing a person would recognise. Reading and writing the same kind
 | Group | Tools |
 | --- | --- |
 | Memory | `search_memory`, `search_messages`, `list_chats`, `read_chat`, `save_memory`, `save_memory_batch`, `update_memory`, `delete_memory` |
-| Files (files, folders and notes; read and write) | `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `write_file`, `create_folder`, `move_file`, `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
+| Files (files, folders and notes; read and write) | `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `write_file`, `create_folder`, `move_file`, `move_to_workspace`, `archive_item`, `restore_item`, `list_notes`, `get_note`, `create_note`, `append_to_note`, `replace_note_section`, `edit_note`, `update_note`, `delete_note` |
 | Tasks | `list_tasks`, `get_task`, `create_task`, `update_task`, `comment_on_task`, `archive_task`, `restore_task` |
 | Skills | `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `save_skill`, `draft_skill_from_chat` |
 | Automations | `list_automations`, `draft_automation_from_chat`, `create_automation`, `update_automation`, `pause_automation`, `delete_automation` |
 | Media generation | `generate_image`, `generate_video`, `generate_video_with_reference`, `animate_image`, `apply_motion_control`, `edit_video` |
+| Data and APIs (paid; see `monid.md`) | `search_apis`, `inspect_api`, `run_api`, `save_api_file`: find and run read-only third-party endpoints through Monid, billed to the workspace per run |
 | Cloud computer (paid, opt-in) and Local computer (the person's own, in local threads) | `computer_exec`, `computer_read_file`, `computer_write_file`, `computer_list_files`, `computer_open_url`, `computer_screenshot`, `computer_input`, `computer_browser`, `computer_terminal`, `computer_publish_file`, `computer_recording` |
 | Agents | `list_agents`, `ask_agent`, `read_agent_reply`, `post_message` (see `agent-to-agent.md`), `create_agent`, `update_agent` (never offered to outside apps), `resolve_assignment` (only in the Chief's native Harness run; withheld from connected agents and outside apps) |
 | Chat only | `present_generated_ui` (renders a draft or connect card in the chat) |
@@ -93,33 +94,80 @@ the server's name and tools, never the secret. Moving a server to the workspace 
 off until connected for the workspace (older shared servers keep theirs, see `mcp-access.md`). A personal connector never
 moves to the workspace; the workspace connects its own account. Connectors work differently: the workspace has its own accounts for the same connectors (Extensions → Workspace → Connectors), held by a workspace entity at the provider (`ovws_<workspaceId>`), separate from every member's personal accounts. When a workspace has any, its agents get a second set of connector tools named `workspace_<tool>` that act through those shared accounts, beside the person's own tools; each describes whose accounts it uses. Only Composio supports this; the Executor provider stays personal-only.
 
-## Rooms others can read
+## Rooms others can read, and workspace automations
 
 An agent summoned in a room others can read does not bring the person's private reach into it. A room is shared when more
 than one person is in it, or when it is a channel anyone in the workspace can read; a chat between one person and an agent,
-and a private channel with one person, are not. The server decides this from the conversation
-(`src/server/agents/shared-room.ts`, fail-closed: if it cannot read the room it treats it as shared). In a shared room:
+and a private channel with one person, are not. A workspace automation's thread counts the same way: the automation runs
+for the whole workspace, so it gets workspace reach only, whoever created it (`workspaceAutomationForThread` in
+`convex/lib/roomAudience.ts`; an archived one keeps the scope it was archived from). The server decides this from the
+conversation (`conversationAudienceIsShared`, read through `src/server/agents/shared-room.ts`, fail-closed: if it cannot
+read the room it treats it as shared); agentless automation runs re-read the automation's scope on every step
+(`resolveAutomationSourceGrant`). In a shared room or workspace automation:
 
-- **Loaded automatically** (`buildAgentTurnContext`): the person's memories and memory profile, retrieval over their files,
-  notes and memories, and their personal skills are not loaded; what the workspace shares still is.
+- **Loaded automatically** (`buildAgentTurnContext`, `ActContextService.loadTurnContext`): the person's memories and memory
+  profile and their personal skills are not loaded; retrieval reads only what the workspace shares (`workspaceOnly`).
 - **Searches** (`search_knowledge`, `search_memory`, `search_messages`) send `workspaceOnly`: nothing private is returned,
-  not even the person's own, and files are not searched (`chunkVisibleToSearch`).
+  not even the person's own. Files in Workspace are searched (indexed once for the workspace, `fileChunkOwner`); personal
+  and archived files are not (`chunkVisibleToSearch`).
+- **Models**: only workspace provider connections and hosted models; a personal key or subscription is refused
+  (`assertUserCanUseByokModel` with `workspaceOnly`).
+- **Memory saves**: what an agent learns there is workspace knowledge (`memoryOwnerForPlace`); an agentless workspace
+  automation saves under the workspace chief (`workspaceChiefMemoryOwnerId`).
 - **Lists** (`list_files`, `list_notes`, `list_skills`, `list_automations`, `list_tasks`) read the Workspace scope whatever `scope` was asked.
 - **Not offered**: `list_chats`, `read_chat`, `search_in_files`.
 - **Connected apps**: only the workspace's (`workspace_…`) tools; the person's own accounts are not offered.
 - **MCP servers**: only the ones shared with the workspace.
 
-Not covered: reading a specific item by id (`read_file`, `get_note`, `get_task`), the write tools (which default to the person's personal
-items), computer tools, and agents asking agents. Naming an item in the message is how a person includes it on
-purpose, but there is no per-message opt-in yet.
+- **By id** (`read_file`, `write_file`/`move_file` on an existing file, `get_note` and every note edit, `delete_note`,
+  `get_task`, `update_task`, `comment_on_task`, `update_automation`, `pause_automation`, `delete_automation`): only
+  Workspace items; a Personal one is refused with a message the model can relay (`refusesRoomItem`).
+- **Creates** (`write_file`, `create_folder`, `create_note`, `create_task`, `create_automation`, and the image and video
+  tools' saved outputs): always Workspace (`roomCreateScope`). Elsewhere they take an optional `scope`, Personal by default. `save_skill` saves nothing: an
+  unreviewed agent-written skill would steer every agent.
+- **Computers**: only the agent's own cloud computer, never a person's Mac or personal cloud computer, and no fallback
+  to a Mac (`computerInstanceFor`); the Local computer tools are not added.
+- **Asking agents**: a person's creator-only agents and their Personal Chief can't be asked (`ask_private_agent`),
+  decided on the server from the asking conversation. An asked workspace agent's run inherits the restriction through
+  its assignment.
+
+- **Move, archive, restore**: `move_to_workspace` is refused (sharing a Personal item is its owner's call, made outside
+  the room); `archive_item` and `restore_item` send `workspaceItemsOnly`, so Convex refuses a Personal item
+  (`workspace_items_only` in `scopeMutations`).
+
+Every search hit (`search_knowledge`, `search_memory`, `search_messages`) and every file, note and task in a list or
+read carries `scope: personal | workspace`. Files and notes also carry `owner` (`you`, or the creator's name when they
+are a member; `ownerNamesFor`, one lookup per result list) and tasks `createdBy`, so the model can say "Maya's note".
+
+- **Including a Personal item on purpose**: a note, file or automation the person @-mentions in their room message is
+  stored on the message (`includedItems`, at most 10, human authors only) and named to the agent in an
+  `<included_personal_items>` block. For the turn that message starts, by-id reads and edits may reach those items
+  (`includedItemIds` on the tool options, checked in `refusesRoomItem`); lists and searches stay Workspace-only, and no
+  other Personal item is reachable. The harness re-reads the message on every tool step (`loadRoomTurnContext`).
+
+## Move, archive and restore
+
+`move_to_workspace`, `archive_item` and `restore_item` (`src/server/tools/tools/scope-executes.ts`) do what the item
+buttons do, through `POST /api/v1/scope` under the person's own rules: only the creator moves, moves are one-way, archive
+and restore need edit rights. `resource` is `file` (files, folders, notes, outputs), `skill`, `automation` or `task`.
+Convex applies the person's own rights to every kind. They are offered only when the person's own message asks to share,
+archive or restore (`isExplicitScopeRequest`), and belong to the Files group (`LATER_GROUP_MEMBERS` keeps saved grants).
+They are request-only (`REQUEST_ONLY_TOOL_IDS`): an agent's grant does not offer them on its own, so an agent turn,
+automation or Slack reply gets them only when that turn's message asks. Outside apps and private threads never get them
+(`MCP_EXTERNAL_WITHHELD_TOOL_IDS`): the scope API checks the person's rights, not an app's access level, and these reach
+automations. Archiving or restoring a folder carries only the contents the caller could change on their own (rows they
+can edit, and in a workspace context only Workspace rows). `list_files`, `list_tasks`, `list_skills` and `list_automations` take
+`archived: true` to find an id to restore; in a room the archived list keeps to Workspace items.
+Outside apps at Read and write get them with the Files group.
 
 ## Who gets what
 
 | Surface | What it gets |
 | --- | --- |
-| **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
+| **Personal chat** | The same pipeline, narrowed by what you ask: a base set (knowledge, memory, notes read, skills, and Data and APIs on paid plans when Overlay has a Monid key) is always there; writes, files, browser, video, and automations appear when the request calls for them (`exposure-policy.ts`), plus web and connected apps by plan. Free plan: paid tools are stubs. |
 | **Overlay (native) agent** | Its grant (groups it was given, `allowedToolIds`) intersected with deployment, account, and project policy. A grant only narrows. New agents get every group except Cloud computer. The Local computer group (`capability:local_computer`) holds no tool ids of its own: it gives the computer tools to a thread its owner set to run on their own computer (`localThreadComputerToolIds`, `internal/develop/thread-folders.md`). It is never exposed over MCP. |
-| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, computer tools, `post_message`, and `resolve_assignment`. |
+| **Private threads** (Overlay Desktop, Cloud sync off) | The Agent Host runs this computer's tools itself (`internal/develop/private-threads.md`). It gets Overlay tools over `/api/mcp` with a one-hour private-thread token (`internal/develop/mcp-access.md`). Paid workspace: the agent's grant, charged like any agent turn. Unpaid workspace with just this person: the free tier, narrowed to memory, files, notes, tasks, skills and web tools, with `web_search` queries, `deep_search` runs and `web_fetch` pages counted against 50 a month per person (`privateThreadAllowances`). Paid-only tools are absent there, not stubs. Unpaid team workspace: no Overlay tools. |
+| **Outside AI apps** (ChatGPT, Claude, Cursor…) | The same tools through `/api/mcp` at the access level the person chose (below), minus agent editing, the `draft_*_from_chat` tools, `present_generated_ui`, the move/archive/restore tools, computer tools, `post_message`, and `resolve_assignment`. |
 
 ## Native agent permissions
 
@@ -146,7 +194,7 @@ request is pending, declined, removed, or paused, `join_status` is its only tool
 
 - **Read only**: `search_memory`, `search_messages`, `list_chats`, `read_chat`, `search_knowledge`, `search_in_files`, `list_files`, `read_file`, `list_notes`, `get_note`, `list_skills`, `find_skills`, `load_skill`, `search_skill_registries`, `list_automations`, `list_tasks`, `get_task`.
 - **Read and write**: read, plus memory, knowledge, files, notes, skills and tasks groups and web search.
-- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, asking agents. Never agent editing or computers.
+- **Everything**: write, plus automations, connected apps, your MCP servers, image and video, Data and APIs, asking agents. Never agent editing or computers.
 
 Task tools use the Work API and its existing permissions. `update_task` sends fields and status in one
 transaction (it cannot move a task between Personal and Workspace: that one-way move needs a person's

@@ -8,6 +8,7 @@ import {
   internalQuery,
   mutation,
   type MutationCtx,
+  type QueryCtx,
 } from '../_generated/server'
 import { internal, api } from '../_generated/api'
 import type { Doc, Id } from '../_generated/dataModel'
@@ -26,7 +27,7 @@ import {
 import { parseTemporalRange } from '../../src/shared/knowledge/temporal-query'
 import { canRecallMessageChunk, messageChunkVisibility } from '../../src/shared/knowledge/message-visibility'
 import { defaultMemoryVisibility } from '../../src/shared/knowledge/memory-visibility'
-import { chunkVisibleToSearch, workspaceOnlySourceKinds } from '../../src/shared/knowledge/chunk-visibility'
+import { chunkScope, chunkVisibleToSearch, fileChunkOwner, workspaceFilesOwnerId } from '../../src/shared/knowledge/chunk-visibility'
 
 export type HybridSearchChunk = {
   text: string
@@ -37,6 +38,8 @@ export type HybridSearchChunk = {
   score: number
   /** Raw vector similarity when ranked via vector search (absent for lexical-only hits). `score` is the fused RRF value. */
   vecScore?: number
+  /** Personal (only its owner sees it) or Workspace (every member does). */
+  scope: 'personal' | 'workspace'
 }
 
 const KNOWLEDGE_SOURCE_KINDS = v.union(
@@ -195,7 +198,8 @@ export async function deleteChunksForSource(
     .query('knowledgeChunks')
     .withIndex('by_source', (q) => q.eq('sourceKind', sourceKind).eq('sourceId', sourceId))
     .collect()
-  const targets = existing.filter((c) => !userId || c.userId === userId)
+  // A file's chunks may be indexed under its workspace rather than its uploader (P7); the file id alone identifies them.
+  const targets = existing.filter((c) => !userId || sourceKind === 'file' || c.userId === userId)
   const embeddings = await Promise.all(targets.map((c) =>
     db
       .query('knowledgeChunkEmbeddings')
@@ -222,6 +226,90 @@ export const purgeKnowledgeSource = internalMutation({
   },
 })
 
+/**
+ * Who a file's chunks are indexed under and who may find them (internal/develop/workspace-and-personal.md):
+ * a live file in Workspace under its workspace (`workspaceFilesOwnerId`), searchable by every member; anything else under
+ * its uploader, private. A missing or deleted file is private to no one in particular: its chunks are left as they are.
+ */
+async function fileOwner(ctx: MutationCtx | QueryCtx, fileId: string) {
+  const id = ctx.db.normalizeId('files', fileId)
+  const file = id ? await ctx.db.get(id) : null
+  return file && file.deletedAt === undefined ? fileChunkOwner(file) : null
+}
+
+/** Moves one chunk (and its embedding) to the owner and visibility its file has now. */
+async function restampChunk(ctx: MutationCtx, chunk: Doc<'knowledgeChunks'>, owner: { userId: string; visibility: 'owner' | 'workspace' }) {
+  if (chunk.userId === owner.userId && chunk.visibility === owner.visibility) return false
+  await ctx.db.patch(chunk._id, { userId: owner.userId, visibility: owner.visibility })
+  if (chunk.userId !== owner.userId) {
+    const embedding = await ctx.db.query('knowledgeChunkEmbeddings').withIndex('by_chunkId', (q) => q.eq('chunkId', chunk._id)).first()
+    if (embedding) await ctx.db.patch(embedding._id, { userId: owner.userId })
+  }
+  return true
+}
+
+const RESTAMP_PAGE = 200
+
+/**
+ * After files (or a folder's contents) moved to Workspace, were archived or were restored: brings their chunks to the
+ * file's current owner and visibility, one page of one file per run, rescheduling itself until every file is done, so a
+ * large folder never exceeds a transaction's limits.
+ */
+export const restampFileChunks = internalMutation({
+  args: { fileIds: v.array(v.string()), cursor: v.optional(v.string()) },
+  handler: async (ctx, { fileIds, cursor }) => {
+    const [fileId, ...rest] = fileIds
+    if (!fileId) return
+    const owner = await fileOwner(ctx, fileId)
+    const page = owner
+      ? await ctx.db.query('knowledgeChunks')
+        .withIndex('by_source', (q) => q.eq('sourceKind', 'file').eq('sourceId', fileId))
+        .paginate({ cursor: cursor ?? null, numItems: RESTAMP_PAGE })
+      : { page: [], isDone: true, continueCursor: '' }
+    for (const chunk of page.page) await restampChunk(ctx, chunk, owner!)
+    const next = page.isDone ? { fileIds: rest } : { fileIds, cursor: page.continueCursor }
+    if (next.fileIds.length > 0) await ctx.scheduler.runAfter(0, internal.knowledge.knowledge.restampFileChunks, next)
+  },
+})
+
+/**
+ * Indexes every file chunk under its file's owner and visibility (P7): workspace files move under their workspace and
+ * become searchable by every member; every other file chunk is marked private. Pure patches, no re-embedding;
+ * idempotent. `dryRun` only counts. Run until `isDone`.
+ */
+export const backfillFileChunkVisibilityByServer = mutation({
+  args: {
+    serverSecret: v.string(),
+    dryRun: v.boolean(),
+    cursor: v.optional(v.union(v.string(), v.null())),
+    numItems: v.optional(v.number()),
+  },
+  handler: async (ctx, { serverSecret, dryRun, cursor, numItems }) => {
+    requireServerSecret(serverSecret)
+    const page = await ctx.db.query('knowledgeChunks')
+      .withIndex('by_source', (q) => q.eq('sourceKind', 'file'))
+      .paginate({ cursor: cursor ?? null, numItems: numItems ?? 200 })
+    const owners = new Map<string, Awaited<ReturnType<typeof fileOwner>>>()
+    let madeWorkspace = 0
+    let madePrivate = 0
+    let unchanged = 0
+    let orphaned = 0
+    for (const chunk of page.page) {
+      if (!owners.has(chunk.sourceId)) owners.set(chunk.sourceId, await fileOwner(ctx, chunk.sourceId))
+      const owner = owners.get(chunk.sourceId)
+      if (!owner) { orphaned++; continue }
+      if (chunk.userId === owner.userId && chunk.visibility === owner.visibility) { unchanged++; continue }
+      if (owner.visibility === 'workspace') madeWorkspace++
+      else madePrivate++
+      if (!dryRun) await restampChunk(ctx, chunk, owner)
+    }
+    return {
+      scanned: page.page.length, madeWorkspace, madePrivate, unchanged, orphaned,
+      isDone: page.isDone, continueCursor: page.isDone ? null : page.continueCursor,
+    }
+  },
+})
+
 export const replaceKnowledgeSource = internalMutation({
   args: {
     userId: v.string(),
@@ -234,7 +322,8 @@ export const replaceKnowledgeSource = internalMutation({
         text: v.string(),
         chunkIndex: v.number(),
         startOffset: v.number(),
-        embedding: v.array(v.float64()),
+        /** Absent when the workspace has no budget for embeddings: the chunk is still found by word search. */
+        embedding: v.optional(v.array(v.float64())),
       }),
     ),
     // Denormalized memory-lifecycle fields so search filters need no join.
@@ -250,6 +339,11 @@ export const replaceKnowledgeSource = internalMutation({
     sourceCount: v.optional(v.number()),
   },
   handler: async (ctx, args) => {
+    // A file's chunks follow its scope as it is now, not when indexing started (P7).
+    const owner = args.sourceKind === 'file' ? await fileOwner(ctx, args.sourceId) : null
+    if (args.sourceKind === 'file' && !owner) return
+    const userId = owner?.userId ?? args.userId
+    const visibility = owner?.visibility ?? args.visibility
     const existing = await ctx.db
       .query('knowledgeChunks')
       .withIndex('by_source', (q) => q.eq('sourceKind', args.sourceKind).eq('sourceId', args.sourceId))
@@ -267,7 +361,7 @@ export const replaceKnowledgeSource = internalMutation({
     }))
     await Promise.all(args.segments.map(async (seg) => {
       const chunkId = await ctx.db.insert('knowledgeChunks', {
-        userId: args.userId,
+        userId,
         workspaceId: args.workspaceId,
         sourceKind: args.sourceKind,
         sourceId: args.sourceId,
@@ -276,7 +370,7 @@ export const replaceKnowledgeSource = internalMutation({
         text: seg.text,
         title: args.title,
         expiresAt: args.expiresAt,
-        visibility: args.visibility,
+        visibility,
         createdAt: args.createdAt,
         updatedAt: args.updatedAt,
         superseded: args.superseded,
@@ -284,9 +378,10 @@ export const replaceKnowledgeSource = internalMutation({
         eventAt: args.eventAt,
         sourceCount: args.sourceCount,
       })
+      if (!seg.embedding) return
       await ctx.db.insert('knowledgeChunkEmbeddings', {
         chunkId,
-        userId: args.userId,
+        userId,
         sourceKind: args.sourceKind,
         embedding: seg.embedding,
       })
@@ -363,6 +458,22 @@ export const searchChunksLexical = internalQuery({
         return chain
       })
       .take(limit)
+  },
+})
+
+/** Whether this person may search the workspace's files: any active member (`canReadResource`). */
+export const canSearchWorkspaceFiles = internalQuery({
+  args: { requestingUserId: v.string(), workspaceId: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, { requestingUserId, workspaceId }) => {
+    const principal = await ctx.db.query('workspacePrincipals')
+      .withIndex('by_workspaceId_userId', (q) => q.eq('workspaceId', workspaceId).eq('userId', requestingUserId))
+      .unique()
+    if (!principal || principal.type !== 'human' || principal.archivedAt) return false
+    const membership = await ctx.db.query('workspaceMemberships')
+      .withIndex('by_workspaceId_principalId', (q) => q.eq('workspaceId', workspaceId).eq('principalId', principal.principalId))
+      .unique()
+    return membership?.status === 'active'
   },
 })
 
@@ -497,7 +608,7 @@ export const backfillMessageChunkVisibilityByServer = mutation({
  * Makes the memories saved before the "a person's memory is theirs by default" rule private to whoever saved them: every
  * person-owned memory with no visibility becomes `owner`, and so do its chunks. Agents' own memories stay shared (workspace
  * knowledge by design), and so does anything saved as shared on purpose. Pure patches, no re-embedding; idempotent.
- * `dryRun` only counts. Run until `isDone`. See internal/plans/TOOL_SCOPING_PLAN.md (T0).
+ * `dryRun` only counts. Run until `isDone`. See internal/develop/workspace-and-personal.md ("Who may search what").
  */
 export const backfillMemoryVisibilityByServer = mutation({
   args: {
@@ -537,7 +648,7 @@ export const backfillMemoryVisibilityByServer = mutation({
 })
 
 /**
- * Who should keep an agent-owned memory under "memories follow the place" (WORKSPACE_PERSONAL_SEPARATION_PLAN.md, P1),
+ * Who should keep an agent-owned memory under "memories follow the place" (internal/develop/workspace-and-personal.md),
  * or null to keep it as the agent's workspace knowledge: a personal chief's go to its owner, a creator-only agent's
  * to its creator, and a workspace agent's to the one person in the 1:1 chat it was learned in.
  */
@@ -702,7 +813,19 @@ export const reindexFileInternal = internalAction({
       userId, 'knowledge.reindex-file', `file:${fileId}`, await sha256Hex(`file:${fileId}:${content}`), EMBEDDING_MODEL,
     ])
     const budget = await checkProviderBudget(ctx, { userId, workspaceId: meta.workspaceId, programmaticSubjectId, operationId })
-    if (!budget.allowed || budget.alreadyCharged) return
+    if (budget.alreadyCharged) return
+    if (!budget.allowed) {
+      // No budget for embeddings (e.g. a workspace without a plan): store the text so word search still finds it.
+      await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
+        userId,
+        workspaceId: meta.workspaceId,
+        sourceKind: 'file',
+        sourceId: fileId,
+        title: name,
+        segments: segments.map((s) => ({ text: s.text, chunkIndex: s.chunkIndex, startOffset: s.startOffset })),
+      })
+      return
+    }
 
     const BATCH = 32
     const allEmb: number[][] = []
@@ -801,13 +924,17 @@ async function indexSourceTextBilled(
   const budget = await checkProviderBudget(ctx, {
     userId: args.userId, workspaceId: args.workspaceId, programmaticSubjectId, operationId,
   })
-  if (!budget.allowed || budget.alreadyCharged) return 'skipped'
+  if (budget.alreadyCharged) return 'skipped'
 
-  const embedded = await embedViaGateway(segments.map((s) => s.text))
-  await chargeEmbedding(ctx, {
-    operationId, programmaticSubjectId, serverSecret, tokens: embedded.promptTokens,
-    userId: args.userId, workspaceId: args.workspaceId,
-  })
+  // No budget for embeddings (e.g. a workspace without a plan): the text is stored without them, so word search
+  // still finds it. Meaning-based search needs a plan.
+  const embedded = budget.allowed ? await embedViaGateway(segments.map((s) => s.text)) : null
+  if (embedded) {
+    await chargeEmbedding(ctx, {
+      operationId, programmaticSubjectId, serverSecret, tokens: embedded.promptTokens,
+      userId: args.userId, workspaceId: args.workspaceId,
+    })
+  }
   await ctx.runMutation(internal.knowledge.knowledge.replaceKnowledgeSource, {
     userId: args.userId,
     workspaceId: args.workspaceId,
@@ -826,7 +953,7 @@ async function indexSourceTextBilled(
       text: s.text,
       chunkIndex: s.chunkIndex,
       startOffset: s.startOffset,
-      embedding: embedded.vectors[i]!,
+      ...(embedded ? { embedding: embedded.vectors[i]! } : {}),
     })),
   })
   return 'indexed'
@@ -1364,6 +1491,7 @@ function packChunksForContext(
       chunkIndex: row.chunkIndex,
       score: scores.get(row._id) ?? 0,
       vecScore: vecScores.get(row._id),
+      scope: chunkScope(row),
     })
   }
   return out
@@ -1402,8 +1530,8 @@ export const hybridSearch = action({
      */
     includeProvenance: v.optional(v.boolean()),
     /**
-     * A search for a room others can read: nothing private comes back (not even the caller's own), and files, which are
-     * indexed per person, are not searched. See `chunkVisibleToSearch`.
+     * A search for a workspace context (a room others can read, a workspace automation): nothing private comes back,
+     * not even the caller's own; workspace files and knowledge do. See `chunkVisibleToSearch`.
      */
     workspaceOnly: v.optional(v.boolean()),
     workspaceId: v.optional(v.string()),
@@ -1422,10 +1550,7 @@ export const hybridSearch = action({
     if (!q) {
       return { chunks: [] }
     }
-    const requestedKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
-    const searchKinds = args.workspaceOnly ? workspaceOnlySourceKinds(requestedKinds) : requestedKinds
-    // Nothing a room may see is left to search (the caller asked only for files).
-    if (searchKinds !== undefined && searchKinds.length === 0) return { chunks: [] }
+    const searchKinds = args.sourceKinds ?? (args.sourceKind !== undefined ? [args.sourceKind] : undefined)
 
     const serverSecret = args.serverSecret
     const operationId = await embeddingOperationId([
@@ -1438,57 +1563,63 @@ export const hybridSearch = action({
       programmaticSubjectId: args.programmaticSubjectId,
       operationId,
     })
-    if (!budget.allowed) throw new Error('background_budget_exhausted')
     if (budget.alreadyCharged) throw new Error('provider_operation_already_charged')
 
-    const { vectors, promptTokens } = await embedViaGateway([q])
-    await chargeEmbedding(ctx, {
-      operationId,
-      programmaticSubjectId: args.programmaticSubjectId,
-      serverSecret,
-      tokens: promptTokens,
-      userId: args.billingUserId,
-      workspaceId: billingWorkspaceId,
-    }).catch((err) => console.error('[knowledge] Failed to charge search embedding', err))
-    const vector = vectors[0]!
+    // Without budget for the query embedding (e.g. a workspace without a plan) the search is word-only.
+    let vector: number[] | null = null
+    if (budget.allowed) {
+      const { vectors, promptTokens } = await embedViaGateway([q])
+      await chargeEmbedding(ctx, {
+        operationId,
+        programmaticSubjectId: args.programmaticSubjectId,
+        serverSecret,
+        tokens: promptTokens,
+        userId: args.billingUserId,
+        workspaceId: billingWorkspaceId,
+      }).catch((err) => console.error('[knowledge] Failed to charge search embedding', err))
+      vector = vectors[0]!
+    }
 
     const callerKinds = searchKinds
     const wantsMemory = callerKinds === undefined || callerKinds.includes('memory')
     const wantsMessage = callerKinds === undefined || callerKinds.includes('message')
+    const wantsFile = callerKinds === undefined || callerKinds.includes('file')
     const memoryUserIds: string[] = args.workspaceId && wantsMemory
       ? await ctx.runQuery(internal.knowledge.knowledge.listWorkspaceMemoryUserIds, {
           requestingUserId: args.userId,
           workspaceId: args.workspaceId,
         })
       : [args.userId]
-    const additionalMemoryUserIds = memoryUserIds.filter((userId) => userId !== args.userId)
     // Other members contribute shared-context kinds only — never their files.
-    const expansionKinds = (['memory', 'message'] as const).filter(
+    const memberKinds = (['memory', 'message'] as const).filter(
       (kind) => kind === 'memory' ? wantsMemory : wantsMessage,
     )
-
-    // The current member keeps access to their indexed files. Additional workspace members
-    // contribute memory chunks only, preserving file ownership while sharing memory context.
-    const currentVectorSearch = ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-      vector,
-      limit: kVec,
-      filter: (fq) => fq.eq('userId', args.userId),
+    // Files in Workspace are indexed once for the workspace (P7), searched for every active member.
+    const workspaceFiles = args.workspaceId && wantsFile && await ctx.runQuery(internal.knowledge.knowledge.canSearchWorkspaceFiles, {
+      requestingUserId: args.userId, workspaceId: args.workspaceId,
     })
-    const additionalMemorySearches = additionalMemoryUserIds.map((userId) => (
+    const expansions: Array<{ userId: string; kinds: Array<'file' | 'memory' | 'message'> }> = [
+      ...memoryUserIds.filter((userId) => userId !== args.userId).map((userId) => ({ userId, kinds: [...memberKinds] })),
+      ...(workspaceFiles ? [{ userId: workspaceFilesOwnerId(args.workspaceId!), kinds: ['file' as const] }] : []),
+    ]
+
+    // The current member searches everything of theirs; the expansions add what the workspace shares. Without budget
+    // for the query embedding the search is word-only, so there is no vector search.
+    const vectorUserIds = vector ? [args.userId, ...expansions.map(({ userId }) => userId)] : []
+    const vectorGroups = (await Promise.all(vectorUserIds.map((userId) => (
       ctx.vectorSearch('knowledgeChunkEmbeddings', 'by_embedding', {
-        vector,
+        vector: vector!,
         limit: kVec,
         filter: (fq) => fq.eq('userId', userId),
       })
-    ))
-    const vectorGroups = (await Promise.all([currentVectorSearch, ...additionalMemorySearches]))
+    ))))
       .map((group) => args.minVecScore === undefined
         ? group
         : group.filter((row) => row._score >= args.minVecScore!))
     const vectorPairGroups = await Promise.all(vectorGroups.map((group, index) => (
       ctx.runQuery(internal.knowledge.knowledge.embeddingChunkIdsForVectorResults, {
         embeddingIds: group.map((row) => row._id),
-        sourceKinds: index === 0 ? callerKinds : [...expansionKinds],
+        sourceKinds: index === 0 ? callerKinds : expansions[index - 1]!.kinds,
         workspaceId: args.workspaceId,
       })
     )))
@@ -1519,8 +1650,8 @@ export const hybridSearch = action({
         query: q,
         limit: kLex,
       })),
-      ...additionalMemoryUserIds.flatMap((userId) => (
-        expansionKinds.map((kind) => ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
+      ...expansions.flatMap(({ userId, kinds }) => (
+        kinds.map((kind) => ctx.runQuery(internal.knowledge.knowledge.searchChunksLexical, {
           userId,
           sourceKind: kind,
           workspaceId: args.workspaceId,
@@ -1544,10 +1675,10 @@ export const hybridSearch = action({
       const window = parseTemporalRange(q, args.asOfMs ?? Date.now())
       if (window) {
         const temporalGroups = await Promise.all(
-          [args.userId, ...additionalMemoryUserIds].map((userId, index) =>
+          [{ userId: args.userId, kinds: callerKinds }, ...expansions].map(({ userId, kinds }) =>
             ctx.runQuery(internal.knowledge.knowledge.temporalChunksInRange, {
               userId,
-              sourceKinds: index === 0 ? callerKinds : [...expansionKinds],
+              sourceKinds: kinds,
               fromMs: window.fromMs,
               toMs: window.toMs,
               limit: 24,
@@ -1670,6 +1801,7 @@ export const hybridSearch = action({
               sourceId: row.sourceId,
               chunkIndex: row.chunkIndex,
               score: hit.score * 0.9,
+              scope: chunkScope(row),
             })
           }
         }

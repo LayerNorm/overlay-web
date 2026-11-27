@@ -75,6 +75,7 @@ For a description of what each route does and its associated implementation file
 ## Connected agents and environments
 
 - `POST /api/v1/harness/continuation`
+- `POST /api/v1/harness/stalled`
 - `POST /api/v1/agent-environments/[environmentId]/approve`
 - `POST /api/v1/agent-environments/[environmentId]/copy-to-files`
 - `PUT /api/v1/agent-environments/[environmentId]/capabilities`
@@ -174,6 +175,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/v1/mcp/authorize`
 - `GET /api/v1/mcp/client`
 - `DELETE, GET, POST /api/v1/mcp/connections`
+- `POST /api/v1/mcp/private-thread`
 - `GET, POST /api/v1/mcps/oauth/callback`
 - `DELETE, POST /api/v1/mcps/oauth`
 - `DELETE, GET, PATCH, POST /api/v1/mcps`
@@ -223,6 +225,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/workspaces/[workspaceId]/audit-export`
 - `POST /api/v1/workspaces/[workspaceId]/billing/checkout`
 - `POST /api/v1/workspaces/[workspaceId]/billing/auto-top-up`
+- `POST /api/v1/workspaces/[workspaceId]/billing/member-caps`
 - `POST /api/v1/workspaces/[workspaceId]/billing/portal`
 - `GET, POST /api/v1/workspaces/[workspaceId]/billing`
 - `POST /api/v1/workspaces/[workspaceId]/billing/top-ups`

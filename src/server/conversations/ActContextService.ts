@@ -139,6 +139,7 @@ type AutoRetrievalBuilder = (args: {
   accessToken?: string
   includeMemories?: boolean
   workspaceId?: string
+  workspaceOnly?: boolean
 }) => Promise<{
   extension: string
   citations: Record<string, { kind: 'file' | 'memory' | 'message'; sourceId: string }>
@@ -229,22 +230,30 @@ export class ActContextService {
     serverSecret: string
     userId: string
     workspaceId?: string
+    /**
+     * A workspace context (a workspace automation, internal/develop/workspace-and-personal.md): only
+     * what the workspace shares is loaded — workspace memories, skills and files — never the person's private ones.
+     */
+    workspaceOnly?: boolean
   }): Promise<ActTurnContext> {
     const memoryEnabled = args.memoryEnabled !== false
+    const workspaceOnly = args.workspaceOnly === true
     const externalContextEnabled = args.externalContextEnabled !== false
     const memoriesTask: Promise<ActMemoryRow[]> = memoryEnabled ? (async () => {
       try {
         const memories = await this.deps.repository.listMemories({
           userId: args.userId,
           workspaceId: args.workspaceId,
+          ...(workspaceOnly ? { workspaceOnly: true } : {}),
         })
-        return memories || listMemories(args.userId)
+        return memories || (workspaceOnly ? [] : listMemories(args.userId))
       } catch (_error) {
         return []
       }
     })() : Promise.resolve([])
     const getMemoryProfile = this.deps.repository.getMemoryProfile?.bind(this.deps.repository)
-    const memoryProfileTask: Promise<{ content: string } | null> = memoryEnabled && getMemoryProfile
+    // The memory profile is the person's own summary: never in a workspace context.
+    const memoryProfileTask: Promise<{ content: string } | null> = memoryEnabled && getMemoryProfile && !workspaceOnly
       ? (async () => {
           try {
             return await getMemoryProfile({
@@ -262,7 +271,9 @@ export class ActContextService {
         // Load the skill directory (name + description only, no full instructions).
         // This keeps the skill context within a small token budget. The agent
         // can load full instructions on demand via the list_skills tool.
-        const directory = await this.deps.repository.listSkillDirectory({ userId: args.userId, workspaceId: args.workspaceId })
+        const directory = await this.deps.repository.listSkillDirectory({
+          userId: args.userId, workspaceId: args.workspaceId, ...(workspaceOnly ? { workspaceOnly: true } : {}),
+        })
         const enabledDirectory = directory.filter((s) => s.enabled !== false)
         // Return as ActSkillRow-shaped objects with empty instructions so the
         // rest of the pipeline (mentionsContext, etc.) still works.
@@ -277,7 +288,8 @@ export class ActContextService {
           updatedAt: 0,
         }))
       } catch (_error) {
-        // Fall back to full skill list if directory query fails.
+        // Fall back to full skill list if directory query fails; it holds personal skills, so not in a workspace context.
+        if (workspaceOnly) return []
         try {
           const allSkills = await this.deps.repository.listSkills({ userId: args.userId })
           return allSkills.filter((s) => s.enabled !== false && s.instructions?.trim())
@@ -319,6 +331,7 @@ export class ActContextService {
           ...(args.accessToken ? { accessToken: args.accessToken } : {}),
           includeMemories: memoryEnabled,
           ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
+          ...(workspaceOnly ? { workspaceOnly: true } : {}),
         })
         return { extension: bundle.extension, citations: bundle.citations }
       } catch (_error) {

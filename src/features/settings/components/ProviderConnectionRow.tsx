@@ -419,8 +419,10 @@ function ProviderConnectionHeader({
         ) : null}
       </div>
 
-      {/* Actions */}
-      <div className="flex shrink-0 items-center gap-1">
+      {/* Actions: a teammate's workspace provider is theirs to change. */}
+      {connection.canManage === false ? (
+        <span className="shrink-0 text-xs text-(--muted)">Added by a teammate</span>
+      ) : <div className="flex shrink-0 items-center gap-1">
         <Button variant="ghost"
           type="button"
           onClick={onDiscover}
@@ -460,7 +462,7 @@ function ProviderConnectionHeader({
             <Trash2 size={14} strokeWidth={1.8} />
           </Button>
         ) : null}
-      </div>
+      </div>}
     </div>
   )
 }
