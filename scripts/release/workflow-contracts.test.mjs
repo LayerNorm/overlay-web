@@ -50,19 +50,19 @@ test('preview credentials stay in a main-only controller without privileged PR t
 
 test('preview requests dispatch only main with a validated PR number, never PR source or inputs', async () => {
   const source = workflow('pr-preview-request').jobs.request.steps[0].with.script
-  const repository = 'LayerNorm/overlay-web'
+  const repository = 'LayerNorm/overlay'
   const pull = { number: 123, head: { repo: { full_name: repository } },
     base: { ref: 'main', repo: { full_name: repository } } }
   const run = async payload => {
     const calls = []; const errors = []
     await vm.runInNewContext(`(async () => { ${source} })()`, {
-      context: { repo: { owner: 'LayerNorm', repo: 'overlay-web' }, payload: { pull_request: payload } },
+      context: { repo: { owner: 'LayerNorm', repo: 'overlay' }, payload: { pull_request: payload } },
       core: { setFailed: message => errors.push(message) },
       github: { rest: { actions: { createWorkflowDispatch: async args => calls.push(JSON.parse(JSON.stringify(args))) } } },
     }, { timeout: 2000 })
     return { calls, errors }
   }
-  assert.deepEqual(await run(pull), { calls: [{ owner: 'LayerNorm', repo: 'overlay-web',
+  assert.deepEqual(await run(pull), { calls: [{ owner: 'LayerNorm', repo: 'overlay',
     workflow_id: 'pr-preview.yml', ref: 'main', inputs: { pr_number: '123' } }], errors: [] })
   for (const invalid of [undefined, { ...pull, number: '123; echo bad' }, { ...pull, number: -1 },
     { ...pull, head: { repo: { full_name: 'outsider/fork' } } },
@@ -85,7 +85,7 @@ test('new PR revisions cancel obsolete checks without canceling main releases or
   assert.equal(workflow('pr-preview').jobs.preview.concurrency['cancel-in-progress'], false)
 })
 
-test('Linux jobs run on pinned GitHub-hosted runners, never a third-party runner pool', () => {
+test('jobs run on pinned GitHub-hosted runners, never a third-party runner pool', () => {
   const files = readdirSync(new URL('../../.github/workflows/', import.meta.url)).filter(name => name.endsWith('.yml'))
   assert.ok(files.length > 0)
   for (const file of files) {
@@ -95,7 +95,8 @@ test('Linux jobs run on pinned GitHub-hosted runners, never a third-party runner
         for (const os of job.strategy.matrix.os) assert.match(os, /^(ubuntu|macos|windows)-[\d.]+$/, `${file}/${id}`)
         continue
       }
-      assert.equal(job['runs-on'], 'ubuntu-24.04', `${file}/${id}`)
+      // Linux jobs use one pinned image; desktop jobs need a pinned macOS image.
+      assert.match(job['runs-on'], /^(?:ubuntu-24\.04|macos-\d+)$/, `${file}/${id}`)
     }
   }
 })
@@ -165,7 +166,7 @@ async function cla({ commits, signatures = [], baseRef = 'refs/heads/main', asso
   const source = workflow('cla').jobs.cla.steps[0].with.script
   const sandbox = {
     Buffer,
-    context: { eventName: 'merge_group', repo: { owner: 'LayerNorm', repo: 'overlay-web' },
+    context: { eventName: 'merge_group', repo: { owner: 'LayerNorm', repo: 'overlay' },
       payload: { merge_group: { base_sha: 'a'.repeat(40), head_sha: 'b'.repeat(40), base_ref: baseRef } } },
     core: { setFailed: text => errors.push(text), info: text => messages.push(text) },
     github: {
@@ -204,7 +205,7 @@ test('merge-group CLA refuses missing or obsolete signatures and invalid provena
 })
 test('unlinked commits require exact membership in an exempt-author PR', async () => {
   const commits = [{ sha: 'c'.repeat(40), author: null, committer: null }]
-  const associated = [{ number: 123, base: { repo: { full_name: 'LayerNorm/overlay-web' } }, user: { login: 'DevelopedByDev' } }]
+  const associated = [{ number: 123, base: { repo: { full_name: 'LayerNorm/overlay' } }, user: { login: 'DevelopedByDev' } }]
   assert.match((await cla({ commits, associated })).errors[0], /unidentified/)
   assert.deepEqual((await cla({ commits, associated, prCommits: commits })).errors, [])
 })

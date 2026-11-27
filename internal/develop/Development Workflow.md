@@ -558,7 +558,7 @@ is exempted by path filters. Do not treat cancellation, missing output or an
 unexpectedly skipped lane as success. Keep protections synchronized with check
 names. The post-merge main run also protects authorized direct owner pushes.
 
-1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay-web` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
+1. Vercel’s native Git integration deploys pushes to `main` in `LayerNorm/overlay` to the `overlay-landing` production project. The owner enabled Git as a production deployment source on 2026-10-14.
 2. Keep `git.deploymentEnabled.main=true` in root `vercel.json`, production branch `main`, and automatic production domain assignment enabled. No custom GitHub Actions deployer or Vercel deployment token is required.
 3. Integration verifies the exact live SHA. If Convex source, imported shared code or runtime dependencies changed, synchronize the production backend from clean current canonical main after matching web is live; frontend-only releases need no backend push.
    Harness personal admission checks backend readiness before creating a run,

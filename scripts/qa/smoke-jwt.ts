@@ -20,10 +20,10 @@
  *   WORKOS_API_KEY,   DEV_WORKOS_API_KEY     — used when fetching JWKS (mirrors server)
  *
  * You can point at overlay's .env.local with:
- *   env $(grep -v '^#' ../overlay-desktop/.env.local | xargs) npx tsx scripts/smoke-jwt.ts
+ *   env $(grep -v '^#' apps/desktop/.env.local | xargs) npx tsx scripts/smoke-jwt.ts
  */
 
-// env vars are loaded by --env-file=../overlay-desktop/.env.local in the npm script
+// env vars are loaded by --env-file=apps/desktop/.env.local in the npm script
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 

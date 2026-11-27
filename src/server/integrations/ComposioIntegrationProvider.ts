@@ -1,7 +1,5 @@
 import 'server-only'
 
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { IntegrationProviderCapabilities, IntegrationSummary } from '@overlay/app-core'
 import type { ToolSet } from 'ai'
 import type { IntegrationProvider } from './contracts'
@@ -78,14 +76,8 @@ export interface ComposioIntegrationProviderOptions {
 }
 
 async function loadComposioSdk(apiKey: string): Promise<ComposioSdkFacade> {
-  let sdkModule: { Composio: new (args: { apiKey: string }) => ComposioSdkFacade }
-  try {
-    sdkModule = await import('@composio/core') as unknown as typeof sdkModule
-  } catch (_error) {
-    const url = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs'),
-    ).href
-    sdkModule = await import(/* webpackIgnore: true */ url) as unknown as typeof sdkModule
+  const sdkModule = await import('@composio/core') as unknown as {
+    Composio: new (args: { apiKey: string }) => ComposioSdkFacade
   }
   return new sdkModule.Composio({ apiKey })
 }

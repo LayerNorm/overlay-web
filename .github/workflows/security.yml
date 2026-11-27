@@ -169,8 +169,6 @@ jobs:
             /*
             !/internal/plans/**/*.html
           sparse-checkout-cone-mode: false
-      - name: Check out desktop transcript contract
-        run: git submodule update --init --depth 1 overlay-desktop
       - name: Prepare dependencies
         uses: ./.github/actions/ci-dependencies
         with:
@@ -205,9 +203,6 @@ jobs:
             /*
             !/internal/plans/**/*.html
           sparse-checkout-cone-mode: false
-
-      - name: Check out desktop transcript contract
-        run: git submodule update --init --depth 1 overlay-desktop
 
       - name: Prepare dependencies
         uses: ./.github/actions/ci-dependencies
@@ -261,9 +256,6 @@ jobs:
             /*
             !/internal/plans/**/*.html
           sparse-checkout-cone-mode: false
-
-      - name: Check out desktop transcript contract
-        run: git submodule update --init --depth 1 overlay-desktop
 
       - name: Prepare dependencies
         uses: ./.github/actions/ci-dependencies

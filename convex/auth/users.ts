@@ -411,6 +411,7 @@ export const deleteUserAccountByServer = mutation({
     }
 
     // 1. Tables with a `by_userId` (or compound) index — single-key lookup.
+    await deleteIndexed(() => ctx.db.query('pushTokens').withIndex('by_user', q => q.eq('userId', userId)).collect())
     await deleteIndexed(() =>
       ctx.db
         .query('userUiSettings')

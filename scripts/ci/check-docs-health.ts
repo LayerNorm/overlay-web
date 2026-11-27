@@ -35,7 +35,7 @@ const apiRouteCatalogFiles = [
   path.join(root, 'internal/develop/api-route-catalog.md'),
   path.join(root, 'internal/develop/compact-api-route-catalog.md'),
 ] as const
-const publicRepositoryUrl = 'https://github.com/LayerNorm/overlay-web'
+const publicRepositoryUrl = 'https://github.com/LayerNorm/overlay'
 const exportedHttpMethods = ['DELETE', 'GET', 'HEAD', 'OPTIONS', 'PATCH', 'POST', 'PUT'] as const
 
 const allowedDocsEntries = new Set([

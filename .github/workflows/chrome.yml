@@ -1,0 +1,59 @@
+name: Chrome extension
+
+# Checks apps/chrome against the monorepo's current shared chat packages. The
+# extension aliases packages/overlay-chat-* source, whose own dependencies resolve
+# from the root workspace, so the root workspace is installed first.
+#
+# Triggers stay on the extension's own folder until it builds against the current
+# shared packages; then they widen to packages/overlay-chat-*/ and packages/overlay-ui/
+# (see internal/plans/MONOREPO_SURFACES_PLAN.md).
+on:
+  pull_request:
+    paths:
+      - apps/chrome/**
+      - .github/workflows/chrome.yml
+  push:
+    branches: [main]
+    paths:
+      - apps/chrome/**
+      - .github/workflows/chrome.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chrome-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/chrome
+
+jobs:
+  check:
+    name: Chrome extension typecheck, test and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v4
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            apps/chrome/package-lock.json
+      - name: Install the root workspace
+        working-directory: .
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Install the extension
+        run: npm ci --no-audit --no-fund
+      - name: Legacy API guard, typecheck, tests and build
+        run: npm run check

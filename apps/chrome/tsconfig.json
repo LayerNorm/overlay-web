@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "useDefineForClassFields": true,
+    "lib": ["DOM", "DOM.Iterable", "ES2022"],
+    "allowJs": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "strict": true,
+    "forceConsistentCasingInFileNames": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "types": ["chrome", "node"],
+    "paths": {
+      "@overlay/chat-core": ["../../packages/overlay-chat-core/src/index.ts"],
+      "@overlay/chat-core/*": ["../../packages/overlay-chat-core/src/*"],
+      "@overlay/chat-react": ["../../packages/overlay-chat-react/src/index.ts"],
+      "@overlay/chat-react/*": ["../../packages/overlay-chat-react/src/*"],
+      "@overlay/extension-contracts": ["./packages/overlay-extension-contracts/src/index.ts"],
+      "@overlay/extension-contracts/*": ["./packages/overlay-extension-contracts/src/*"]
+    }
+  },
+  "include": ["src", "packages", "vite.config.ts"]
+}

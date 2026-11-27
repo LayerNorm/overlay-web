@@ -134,7 +134,7 @@ release; change `OVERLAY_RELEASE` only when you have approved another published
 release.
 
 ```bash
-export OVERLAY_REPOSITORY_URL="${OVERLAY_REPOSITORY_URL:-https://github.com/LayerNorm/overlay-web.git}"
+export OVERLAY_REPOSITORY_URL="${OVERLAY_REPOSITORY_URL:-https://github.com/LayerNorm/overlay.git}"
 export OVERLAY_RELEASE="${OVERLAY_RELEASE:-v0.1.0-rc.1}"
 
 git clone "$OVERLAY_REPOSITORY_URL" overlay-web
@@ -152,7 +152,7 @@ git tag --points-at HEAD
 ```
 
 Published releases are listed at
-[github.com/LayerNorm/overlay-web/releases](https://github.com/LayerNorm/overlay-web/releases).
+[github.com/LayerNorm/overlay/releases](https://github.com/LayerNorm/overlay/releases).
 </Step>
 
 <Step title="Create the runtime files">

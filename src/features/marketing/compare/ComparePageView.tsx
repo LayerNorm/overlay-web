@@ -27,7 +27,7 @@ export function ComparePageView({ page }: { page: ComparePage }) {
           <p className="meta-line">Facts checked {page.checked}. Competitor details come from their public pages, linked below.</p>
           <div className="actions" style={{ justifyContent: "flex-start" }}>
             <Link className="btn primary" href="/app">Try Overlay free</Link>
-            <a className="btn ghost" href="https://github.com/LayerNorm/overlay-web">View source</a>
+            <a className="btn ghost" href="https://github.com/LayerNorm/overlay">View source</a>
           </div>
         </MarketingPageHead>
 

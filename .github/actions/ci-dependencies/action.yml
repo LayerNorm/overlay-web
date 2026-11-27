@@ -38,7 +38,7 @@ runs:
           node_modules
           packages/*/node_modules
           apps/*/node_modules
-        key: ci-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ steps.node.outputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/*/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
+        key: ci-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ steps.node.outputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/admin/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
     - name: Install from lockfile
       if: steps.dependencies.outputs.cache-hit != 'true'
       shell: bash

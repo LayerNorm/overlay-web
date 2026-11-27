@@ -167,6 +167,7 @@ import type * as lib_threadPullRequests from "../lib/threadPullRequests.js";
 import type * as lib_threadWork from "../lib/threadWork.js";
 import type * as lib_usageMarkup from "../lib/usageMarkup.js";
 import type * as lib_userMessageMetadata from "../lib/userMessageMetadata.js";
+import type * as lib_mobilePush from "../lib/mobilePush.js";
 import type * as lib_workDependencies from "../lib/workDependencies.js";
 import type * as lib_workItems from "../lib/workItems.js";
 import type * as lib_workspaceHandles from "../lib/workspaceHandles.js";
@@ -190,6 +191,8 @@ import type * as migrations_renameGenericWorkspaces from "../migrations/renameGe
 import type * as migrations_workspaceAgentModels from "../migrations/workspaceAgentModels.js";
 import type * as migrations_workspaceHandles from "../migrations/workspaceHandles.js";
 import type * as platform_gatewayCatalog from "../platform/gatewayCatalog.js";
+import type * as notifications_push from "../notifications/push.js";
+import type * as notifications_tokens from "../notifications/tokens.js";
 import type * as platform_growth from "../platform/growth.js";
 import type * as platform_http from "../platform/http.js";
 import type * as platform_idempotency from "../platform/idempotency.js";
@@ -380,6 +383,7 @@ declare const fullApi: ApiFromModules<{
   "lib/threadWork": typeof lib_threadWork;
   "lib/usageMarkup": typeof lib_usageMarkup;
   "lib/userMessageMetadata": typeof lib_userMessageMetadata;
+  "lib/mobilePush": typeof lib_mobilePush;
   "lib/workDependencies": typeof lib_workDependencies;
   "lib/workItems": typeof lib_workItems;
   "lib/workspaceHandles": typeof lib_workspaceHandles;
@@ -403,6 +407,8 @@ declare const fullApi: ApiFromModules<{
   "migrations/workspaceAgentModels": typeof migrations_workspaceAgentModels;
   "migrations/workspaceHandles": typeof migrations_workspaceHandles;
   "platform/gatewayCatalog": typeof platform_gatewayCatalog;
+  "notifications/push": typeof notifications_push;
+  "notifications/tokens": typeof notifications_tokens;
   "platform/growth": typeof platform_growth;
   "platform/http": typeof platform_http;
   "platform/idempotency": typeof platform_idempotency;
