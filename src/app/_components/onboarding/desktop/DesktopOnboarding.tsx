@@ -113,7 +113,7 @@ function Choice({ pressed, icon, title, detail, onClick, disabled = false }: {
 }) {
   return (
     <Button variant="outline" aria-pressed={pressed} disabled={disabled} onClick={onClick}
-      className={`h-auto flex-col items-stretch gap-3 rounded-[10px] bg-(--surface-elevated) p-3.5 text-left font-normal ${pressed ? 'border-(--muted-light)' : ''}`}>
+      className={`h-auto flex-col items-stretch justify-start gap-3 rounded-[10px] bg-(--surface-elevated) p-3.5 text-left font-normal ${pressed ? 'border-(--muted-light)' : ''}`}>
       <span className="flex items-start justify-between">
         <span className="grid size-8 place-items-center rounded-lg bg-(--surface-subtle) text-(--muted)">{icon}</span>
         <span className={`grid size-4 place-items-center rounded-full border-[1.5px] ${pressed ? 'border-foreground' : 'border-(--muted-light)'}`}>
@@ -428,7 +428,7 @@ function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBac
   const feature = (text: string) => <li key={text} className="flex items-start gap-2"><Check size={14} className="mt-0.5 shrink-0 text-(--muted)" /><span>{text}</span></li>
   const card = (id: 'free' | 'paid', title: string, price: string, unit: string, items: string[]) => (
     <Button variant="outline" aria-pressed={plan === id} disabled={busy || (id === 'free' && team)} onClick={() => setPlan(id)}
-      className={`h-auto flex-col items-stretch gap-3.5 whitespace-normal rounded-[10px] bg-(--surface-elevated) p-4 text-left font-normal ${plan === id ? 'border-(--muted-light)' : ''}`}>
+      className={`h-auto flex-col items-stretch justify-start gap-3.5 whitespace-normal rounded-[10px] bg-(--surface-elevated) p-4 text-left font-normal ${plan === id ? 'border-(--muted-light)' : ''}`}>
       <span className="flex items-start justify-between"><span className="text-sm font-medium">{title}</span>
         <span className={`grid size-4 place-items-center rounded-full border-[1.5px] ${plan === id ? 'border-foreground' : 'border-(--muted-light)'}`}>{plan === id ? <span className="size-2 rounded-full bg-foreground" /> : null}</span></span>
       <span className="text-2xl font-semibold tracking-[-0.01em]">{price} <span className="text-[13px] font-normal text-(--muted)">{unit}</span></span>
