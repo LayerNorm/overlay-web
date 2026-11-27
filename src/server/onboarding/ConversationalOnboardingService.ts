@@ -3,7 +3,11 @@ import 'server-only'
 import { randomUUID } from 'node:crypto'
 import {
   ONBOARDING_INTRO,
+  ONBOARDING_INTRO_V4,
+  ONBOARDING_SUBSCRIPTION_PROMPT,
   ONBOARDING_TOOL_LABELS,
+  onboardingProfileKey,
+  onboardingSolo,
   OnboardingRunIdSchema,
   extractOnboardingName,
   preparedOnboardingReply,
@@ -30,7 +34,7 @@ const MAX_STATE_LENGTH = 64_000
 type Outbox = { clientNonce: string; content: string; kind: 'user' | 'assistant' }
 type StoredState = { version: 1; userId: string; session: OnboardingSession; outbox: Outbox[] }
 
-export type OnboardingReplyContext = Record<string, never>
+export type OnboardingReplyContext = { flowVersion?: OnboardingSession['flowVersion'] }
 export type OnboardingReplyFactory = (
   step: OnboardingStep,
   profile: OnboardingProfile,
@@ -51,6 +55,10 @@ export type OnboardingServiceDependencies = {
   effects: OnboardingEffects
   reply?: OnboardingReplyFactory
   createRunId?: () => string
+  /** Starts the workspace's one free trial when it has never had a plan; a no-op otherwise. */
+  startTrial?: (userId: string, workspaceId: string) => Promise<void>
+  /** The flow new sessions use; saved sessions keep theirs. Defaults to flow 4. */
+  flowVersion?: 3 | 4
 }
 export type OnboardingSessionResponse = { completed: boolean; session: OnboardingSession | null }
 
@@ -65,7 +73,7 @@ export class ConversationalOnboardingService {
   private readonly reply: OnboardingReplyFactory
 
   constructor(private readonly deps: OnboardingServiceDependencies) {
-    this.reply = deps.reply ?? (async (step, profile) => preparedOnboardingReply(step, profile))
+    this.reply = deps.reply ?? (async (step, profile, _aiEnabled, context) => preparedOnboardingReply(step, profile, context.flowVersion))
   }
 
   async get(userId: string, workspaceId: string): Promise<OnboardingSessionResponse> {
@@ -90,7 +98,7 @@ export class ConversationalOnboardingService {
         throw error
       })
       if (task?.workspaceId === workspaceId && task.createdBy === userId
-        && task.assigneePrincipalId === session.agentPrincipalId && task.assignmentExecution?.status === 'started') {
+        && task.assigneePrincipalId === (session.taskAgentPrincipalId ?? session.agentPrincipalId) && task.assignmentExecution?.status === 'started') {
         const next = await this.reduceFinish(state, userId, { action: 'finish', runId: session.runId, revision: session.revision, taskId: task.id })
         return this.commit(userId, workspaceId, session.revision, next.state, next.completed)
       }
@@ -113,21 +121,22 @@ export class ConversationalOnboardingService {
     if (!overlay) throw new OnboardingServiceError('Overlay agent is unavailable', 409, 'overlay_agent_unavailable')
     const thread = await this.deps.effects.agents.resolveMainThread({ actorUserId: userId, workspaceId, agentId: overlay.id })
     const workspaceContext = await this.deps.effects.workspaces.getOnboardingContext({ actorUserId: userId, workspaceId })
+    const flow = this.deps.flowVersion ?? 4
     const intro = workspaceContext.invited
       ? `Welcome to ${workspaceContext.workspaceName}. ${workspaceContext.inviterName ? `${workspaceContext.inviterName} invited you to work here with Overlay.` : "I'll help you get set up here with Overlay."}`
-      : ONBOARDING_INTRO
+      : flow === 4 ? ONBOARDING_INTRO_V4 : ONBOARDING_INTRO
     // Overlay Desktop's setup may already have asked the first questions; the conversation continues after them.
     const prefill = options.prefill
     const profile: OnboardingProfile = prefill
       ? { name: prefill.name, about: prefill.about, daily: '', ...(prefill.team ? { team: prefill.team } : {}) }
       : { name: '', about: '', daily: '' }
-    const firstStep = onboardingProfileSteps({ flowVersion: 3, member: options.member ?? false })
-      .find((candidate) => !profile[candidate as keyof OnboardingProfile]) ?? 'daily'
-    const reply = await this.makeReply(firstStep, profile, false, {})
+    const firstStep = onboardingProfileSteps({ flowVersion: flow, member: options.member ?? false })
+      .find((candidate) => !profile[onboardingProfileKey(candidate)]) ?? (flow === 4 ? 'task' : 'daily')
+    const reply = await this.makeReply(firstStep, profile, false, { flowVersion: flow })
     const runId = this.deps.createRunId?.() ?? randomUUID()
     if (!OnboardingRunIdSchema.safeParse(runId).success) throw new OnboardingServiceError('Onboarding run is invalid', 500, 'run_invalid')
     const session: OnboardingSession = {
-      version: 1, flowVersion: 3, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
+      version: 1, flowVersion: flow, member: options.member ?? false, runId, revision: 1, workspaceId, conversationId: thread.conversationId,
       agentId: overlay.id, agentPrincipalId: overlay.principalId, step: firstStep, profile,
       aiEnabled: false, reply, employees: [], suggestions: [], createdAgentIds: [], workspaceContext,
     }
@@ -178,10 +187,13 @@ export class ConversationalOnboardingService {
       const current = state.session
       if (current.step !== 'task') throw new OnboardingServiceError('Drafts are only accepted at the task step', 409, 'invalid_step')
       const revision = current.revision + 1
-      const message = await this.deps.taskReply?.(userId, current.workspaceId, current.workspaceContext?.workspaceName ?? 'Your workspace')
+      const chief = current.flowVersion === 4 ? await this.taskChief(current, userId) : null
+      if (current.flowVersion === 4 && !current.member) await this.deps.startTrial?.(userId, current.workspaceId)
+      const message = current.flowVersion === 4 ? ONBOARDING_SUBSCRIPTION_PROMPT
+        : await this.deps.taskReply?.(userId, current.workspaceId, current.workspaceContext?.workspaceName ?? 'Your workspace')
         ?? "I've saved your first task. We'll check your workspace budget before we start."
       const reply = { ...current.reply, message }
-      return { completed: false, state: { ...state, session: { ...current, revision, taskDraft: action.value, reply }, outbox: [
+      return { completed: false, state: { ...state, session: { ...current, revision, taskDraft: action.value, reply, ...(chief ? { taskAgentId: chief.id, taskAgentPrincipalId: chief.principalId } : {}) }, outbox: [
         { clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: action.value, kind: 'user' as const },
         { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const },
       ] } }
@@ -202,9 +214,10 @@ export class ConversationalOnboardingService {
       throw new OnboardingServiceError('Name is too long', 400, 'invalid_profile')
     }
     // The transcript keeps what the user typed; the profile keeps just the name.
-    const stored = current.step === 'name' && current.flowVersion === 3 ? extractOnboardingName(value) : value
+    const stored = current.step === 'name' && (current.flowVersion === 3 || current.flowVersion === 4) ? extractOnboardingName(value) : value
     if (!stored) throw new OnboardingServiceError('Tell me what to call you', 400, 'invalid_profile')
-    const profile = { ...current.profile, [current.step]: stored } as OnboardingProfile
+    if (current.step === 'heard' && stored.length > 200) throw new OnboardingServiceError('Keep that short', 400, 'invalid_profile')
+    const profile = { ...current.profile, [onboardingProfileKey(current.step)]: stored } as OnboardingProfile
     if (current.flowVersion === 2 && current.step === 'about') {
       if (!profile.team && /\b(?:just me|work(?:ing)? (?:alone|solo|on my own)|solo founder)\b/i.test(value)) profile.team = 'Just me'
       if (!profile.team && /\b(?:team of \d+|\d+[- ]person (?:team|agency|company))\b/i.test(value)) profile.team = 'A small team'
@@ -214,8 +227,8 @@ export class ConversationalOnboardingService {
     const steps = onboardingProfileSteps(current)
     let nextIndex = steps.indexOf(current.step) + 1
     while ((steps[nextIndex] === 'team' && profile.team) || (steps[nextIndex] === 'website' && profile.website)) nextIndex++
-    const step: OnboardingStep = steps[nextIndex] ?? (current.member ? 'connections' : 'employees')
-    const reply = await this.makeReply(step, profile, current.aiEnabled, {})
+    const step: OnboardingStep = steps[nextIndex] ?? (current.flowVersion === 4 ? 'task' : current.member ? 'connections' : 'employees')
+    const reply = await this.makeReply(step, profile, current.aiEnabled, { flowVersion: current.flowVersion })
     const revision = current.revision + 1
     return {
       completed: false,
@@ -231,7 +244,7 @@ export class ConversationalOnboardingService {
     const index = steps.indexOf(current.step)
     if (index < 1 || current.createdAgentIds.length) throw new OnboardingServiceError('Previous answers can no longer be changed here', 409, 'invalid_step')
     const step = steps[index - 1] as OnboardingStep
-    const reply = await this.makeReply(step, current.profile, current.aiEnabled, {})
+    const reply = await this.makeReply(step, current.profile, current.aiEnabled, { flowVersion: current.flowVersion })
     const revision = current.revision + 1
     return { completed: false, state: { ...state, session: { ...current, step, revision, reply }, outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
   }
@@ -247,7 +260,7 @@ export class ConversationalOnboardingService {
     const invitedEmails = await this.verifyInvitations(current, userId, action.invitationIds ?? [])
     const createdAgentIds = [...new Set([...current.createdAgentIds, ...(action.agentIds ?? [])])]
     const step = this.stepAfter(current)
-    const prepared = await this.makeReply(step, current.profile, current.aiEnabled, {})
+    const prepared = await this.makeReply(step, current.profile, current.aiEnabled, { flowVersion: current.flowVersion })
     const revision = current.revision + 1
     const summary = current.flowVersion === 3
       ? onboardingAdvanceReply(current.step, { agentNames, invitedEmails, tools: (action.connectedTools ?? []).map((tool) => ONBOARDING_TOOL_LABELS[tool]), memories: Boolean(action.memoryIds?.length) })
@@ -257,6 +270,15 @@ export class ConversationalOnboardingService {
     return { completed: false, state: { ...state, session: { ...current, revision, step, reply, employees: reply.employees ?? [], suggestions: reply.suggestions ?? [], createdAgentIds },
       outbox: [{ clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: summary, kind: 'user' as const },
         { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const }] } }
+  }
+
+  /** Flow 4: solo people work with their personal chief; teams and invited members with Overlay. */
+  private async taskChief(current: OnboardingSession, userId: string) {
+    const overlay = { id: current.agentId, principalId: current.agentPrincipalId }
+    if (!onboardingSolo(current)) return overlay
+    const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId: current.workspaceId, includePersonal: true })
+    const chief = list.agents.find((agent) => agent.agentRole === 'personal_chief' && agent.chiefOwnerUserId === userId && !agent.archivedAt)
+    return chief ? { id: chief.id, principalId: chief.principalId } : overlay
   }
 
   /** Returns the names of the agents, which must be the user's own. */
@@ -322,7 +344,7 @@ export class ConversationalOnboardingService {
     }
     if (task.workspaceId !== current.workspaceId || task.createdBy !== userId) throw new OnboardingServiceError('Task is not available in this workspace', 403, 'task_forbidden')
     const startedDraft = Boolean(current.taskDraft && current.taskId === task.id
-      && task.assigneePrincipalId === current.agentPrincipalId && task.assignmentExecution?.status === 'started')
+      && task.assigneePrincipalId === (current.taskAgentPrincipalId ?? current.agentPrincipalId) && task.assignmentExecution?.status === 'started')
     const keepDraft = action.start === false
     if (keepDraft && (!current.taskDraft || current.taskId !== task.id)) throw new OnboardingServiceError('Save this draft before opening Work.', 409, 'task_not_saved')
     // Completing an already-started task is recovery, not admission of more work.
@@ -332,13 +354,14 @@ export class ConversationalOnboardingService {
     }
     const reply = keepDraft
       ? { ...current.reply, message: 'Your draft is saved. You can start it from Work when your workspace is ready.' }
-      : await this.makeReply('complete', current.profile, current.aiEnabled, {})
+      : await this.makeReply('complete', current.profile, current.aiEnabled, { flowVersion: current.flowVersion })
     const revision = current.revision + 1
     return {
       completed: true,
       state: {
         ...state,
-        session: { ...current, revision, step: 'complete' as const, reply, taskId: task.id },
+        session: { ...current, revision, step: 'complete' as const, reply, taskId: task.id,
+          ...(current.flowVersion === 4 && task.assignmentExecution?.conversationId ? { taskConversationId: task.assignmentExecution.conversationId } : {}) },
         outbox: [
           { clientNonce: this.nonce(userId, current.runId, revision, 'user'), content: task.title.trim(), kind: 'user' as const },
           { clientNonce: this.nonce(userId, current.runId, revision, 'assistant'), content: reply.message, kind: 'assistant' as const },
@@ -429,9 +452,12 @@ function isValidOnboardingSession(value: unknown): value is OnboardingSession {
   if (!isObjectRecord(value)) return false
   const session = value as Record<string, unknown>
   const sessionKeys = ['version', 'runId', 'revision', 'workspaceId', 'conversationId', 'agentId', 'agentPrincipalId', 'step', 'profile', 'aiEnabled', 'reply', 'employees', 'suggestions', 'createdAgentIds']
-  const optionalKeys = ['flowVersion', 'member', 'taskId', 'taskDraft', 'workspaceContext'].filter((key) => Object.hasOwn(session, key))
+  const optionalKeys = ['flowVersion', 'member', 'taskId', 'taskDraft', 'workspaceContext', 'taskAgentId', 'taskAgentPrincipalId', 'taskConversationId'].filter((key) => Object.hasOwn(session, key))
   if (!isExactKeys(value, [...sessionKeys, ...optionalKeys])) return false
-  if (session.flowVersion !== undefined && ![2, 3].includes(session.flowVersion as number)) return false
+  if (session.flowVersion !== undefined && ![2, 3, 4].includes(session.flowVersion as number)) return false
+  for (const key of ['taskAgentId', 'taskAgentPrincipalId', 'taskConversationId']) {
+    if (session[key] !== undefined && !boundedString(session[key], 1, 200)) return false
+  }
   if (session.member !== undefined && typeof session.member !== 'boolean') return false
   if (session.workspaceContext !== undefined && !OnboardingWorkspaceContextSchema.safeParse(session.workspaceContext).success) return false
   if (session.version !== 1
@@ -461,13 +487,14 @@ function isValidOnboardingTask(session: Record<string, unknown>): boolean {
 }
 
 function isValidProfile(value: unknown): value is OnboardingProfile {
-  if (!isObjectRecord(value) || !isExactKeys(value, ['name', 'about', 'daily', ...['team', 'website'].filter((key) => Object.hasOwn(value, key))])) return false
+  if (!isObjectRecord(value) || !isExactKeys(value, ['name', 'about', 'daily', ...['team', 'website', 'heardFrom'].filter((key) => Object.hasOwn(value, key))])) return false
   const profile = value as Record<string, unknown>
   return boundedString(profile.name, 0, 200) &&
     boundedString(profile.about, 0, 3000) &&
     boundedString(profile.daily, 0, 3000) &&
     (profile.team === undefined || boundedString(profile.team, 0, 3000)) &&
-    (profile.website === undefined || boundedString(profile.website, 0, 3000))
+    (profile.website === undefined || boundedString(profile.website, 0, 3000)) &&
+    (profile.heardFrom === undefined || boundedString(profile.heardFrom, 0, 200))
 }
 
 function isValidStoredReply(value: unknown): value is OnboardingReply {

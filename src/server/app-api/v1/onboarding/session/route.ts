@@ -15,6 +15,15 @@ function service() {
   const server = getOverlayServerContext()
   return new ConversationalOnboardingService({
     repository: new ConvexOnboardingStateRepository(),
+    startTrial: async (userId, workspaceId) => {
+      const [{ getOverlayCapabilities }, { lazyConvex }, { getInternalApiSecret }] = await Promise.all([
+        import('@/server/capabilities'), import('@/server/database/lazy-convex'), import('@/server/shared/internal-api-secret'),
+      ])
+      if (!(await getOverlayCapabilities()).billing) return
+      await lazyConvex.mutation('billing/accountSubscriptions:startWorkspaceTrialByServer', {
+        serverSecret: getInternalApiSecret(), workspaceId, userId,
+      }, { throwOnError: true })
+    },
     taskReply: async (actorUserId, workspaceId, workspaceName) => onboardingTaskMessage(await workspaceBillingService.summary({ actorUserId, workspaceId }), workspaceName),
     effects: {
       agents: server.workspaceAgentService,

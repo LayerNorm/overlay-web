@@ -1,6 +1,6 @@
 import { z } from 'zod/v3'
 
-export const onboardingSteps = ['heard', 'name', 'about', 'team', 'website', 'daily', 'employees', 'connections', 'external', 'memories', 'teammates', 'task', 'subscription', 'complete'] as const
+export const onboardingSteps = ['heard', 'name', 'about', 'team', 'website', 'daily', 'employees', 'connections', 'external', 'memories', 'teammates', 'task', 'complete'] as const
 export type OnboardingStep = typeof onboardingSteps[number]
 export type OnboardingProfile = { name: string; about: string; daily: string; team?: string; website?: string; heardFrom?: string }
 export type OnboardingEmployee = { name: string; role: string }
@@ -78,6 +78,11 @@ export const ONBOARDING_INTRO = "Hi, I'm Overlay, your chief of staff. I'll run 
 export const ONBOARDING_INTRO_V4 = "Hi, I'm Overlay, your AI chief of staff. A few quick questions, then I'll get to work on something for you."
 export const ONBOARDING_HEARD_FROM = ['X', 'LinkedIn', 'A friend or colleague', 'Search', 'YouTube', 'Somewhere else'] as const
 export const ONBOARDING_TEAM_CHOICES = ['Just me', 'With a team'] as const
+export const ONBOARDING_SUBSCRIPTION_PROMPT = "Got it. Want me to run on your own AI subscription, like ChatGPT or Claude? It's optional. I can use Overlay models instead."
+/** The profile field each flow 4 question fills. */
+export function onboardingProfileKey(step: OnboardingStep): keyof OnboardingProfile {
+  return step === 'heard' ? 'heardFrom' : step as keyof OnboardingProfile
+}
 
 /** Solo people run their first task with their personal chief; teams (and invited members) with Overlay. */
 export function onboardingSolo(session: Pick<OnboardingSession, 'member' | 'profile'>): boolean {
@@ -143,7 +148,6 @@ export function preparedOnboardingReply(step: OnboardingStep, profile: Onboardin
   if (flowVersion === 4) return preparedOnboardingReplyV4(step, profile)
   const messages: Record<OnboardingStep, string> = {
     heard: 'How did you hear about Overlay?',
-    subscription: 'Want me to run on your own AI subscription?',
     name: 'What should I call you?',
     about: `Nice to meet you, ${profile.name}.\n\nWhat kind of work do you do?`,
     team: 'Who do you work with?',
@@ -171,7 +175,6 @@ function preparedOnboardingReplyV4(step: OnboardingStep, profile: OnboardingProf
     about: `Nice to meet you, ${profile.name}.\n\nWhat kind of work do you do?`,
     team: 'Will you use Overlay on your own or with a team?',
     task: "What's one task I can take off your plate? Your first task is on us.",
-    subscription: "Got it. Want me to run on your own AI subscription, like ChatGPT or Claude? It's optional. I can use Overlay models instead.",
     complete: "I'm on it. I'll work on this in our thread and ask there if I need access to anything.",
   }
   return {

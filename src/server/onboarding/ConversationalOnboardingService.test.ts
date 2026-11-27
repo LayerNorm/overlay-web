@@ -73,7 +73,7 @@ function fixture(paid = true) {
     work: { async get() { throw new WorkServiceError('Task not found.', 404, 'work_not_found') } },
   }
   return {
-    repository, effects, messages, service: new ConversationalOnboardingService({ repository, effects,
+    repository, effects, messages, service: new ConversationalOnboardingService({ repository, effects, flowVersion: 3,
       requireExecution: async ({ workspaceId }) => {
         if (!paid) throw new WorkspaceExecutionError({ state: 'subscription_required', canExecute: false }, true)
         return { billingEnabled: true, canManage: true, workspaceId: workspaceId!, access: { state: 'ready', canExecute: true } }
@@ -167,7 +167,7 @@ test('names are read out of conversational answers', async () => {
 
 test('provider connections remain in onboarding independently of app and agent capabilities', async () => {
   const f = fixture()
-  const service = new ConversationalOnboardingService({ repository: f.repository, effects: f.effects })
+  const service = new ConversationalOnboardingService({ repository: f.repository, effects: f.effects, flowVersion: 3 })
   let result = await service.start('user-1', 'workspace-1')
   for (const value of ['Ada', 'Design', 'A small team', 'Writing & content']) {
     result = await service.act('user-1', 'workspace-1', { action: 'answer', runId: result.session!.runId, revision: result.session!.revision, value })
@@ -543,4 +543,81 @@ test('answers from Overlay Desktop setup start the conversation after them', asy
   // A start with answers is a normal start action.
   assert.ok(OnboardingActionSchema.safeParse({ action: 'start', prefill: { name: 'Sam', about: 'Operations' } }).success)
   assert.ok(!OnboardingActionSchema.safeParse({ action: 'start', prefill: { name: '', about: 'Operations' } }).success)
+})
+
+function v4Fixture(options: { personalChief?: boolean } = {}) {
+  const f = fixture()
+  const trials: string[] = []
+  const baseList = f.effects.agents.list
+  f.effects.agents.list = (async (args: Parameters<typeof baseList>[0]) => {
+    const result = await baseList(args) as unknown as { agents: Array<Record<string, unknown>>; viewerPrincipalId: string }
+    if (options.personalChief !== false && args.includePersonal) result.agents.push({ id: 'chief', principalId: 'chief-principal', name: "Ada's Chief", agentRole: 'personal_chief', chiefOwnerUserId: 'user-1', visibility: 'creator', createdByPrincipalId: 'owner' })
+    return result as never
+  }) as typeof baseList
+  const service = new ConversationalOnboardingService({ repository: f.repository, effects: f.effects, flowVersion: 4,
+    startTrial: async (_userId, workspaceId) => { trials.push(workspaceId) },
+    requireExecution: async ({ workspaceId }) => ({ billingEnabled: true, canManage: true, workspaceId: workspaceId!, access: { state: 'ready', canExecute: true } }),
+  })
+  return { ...f, service, trials }
+}
+
+async function answerV4(f: ReturnType<typeof v4Fixture>, answers: string[]) {
+  let result = await f.service.start('user-1', 'workspace-1')
+  for (const value of answers) {
+    result = await f.service.act('user-1', 'workspace-1', { action: 'answer', runId: result.session!.runId, revision: result.session!.revision, value })
+  }
+  return result
+}
+
+test('flow 4 asks how you heard, name, role and team, then the task', async () => {
+  const f = v4Fixture()
+  let result = await f.service.start('user-1', 'workspace-1')
+  assert.equal(result.session?.flowVersion, 4)
+  assert.equal(result.session?.step, 'heard')
+  assert.match(f.messages[0].content, /AI chief of staff/)
+  result = await answerV4(f, [])
+  const steps: string[] = [result.session!.step]
+  for (const value of ['LinkedIn', 'call me ada', 'Engineering', 'Just me']) {
+    result = await f.service.act('user-1', 'workspace-1', { action: 'answer', runId: result.session!.runId, revision: result.session!.revision, value })
+    steps.push(result.session!.step)
+  }
+  assert.deepEqual(steps, ['heard', 'name', 'about', 'team', 'task'])
+  assert.equal(result.session?.profile.heardFrom, 'LinkedIn')
+  assert.equal(result.session?.profile.name, 'Ada')
+  assert.equal(result.session?.suggestions.length, 3)
+  assert.match(result.session!.reply.message, /on us/)
+})
+
+test('flow 4 solo tasks run with the personal chief and start the trial', async () => {
+  const f = v4Fixture()
+  let result = await answerV4(f, ['X', 'Ada', 'Product', 'Just me'])
+  result = await f.service.act('user-1', 'workspace-1', { action: 'draft_task', runId: result.session!.runId, revision: result.session!.revision, value: 'Plan my week' })
+  assert.equal(result.session?.taskAgentPrincipalId, 'chief-principal')
+  assert.equal(result.session?.taskAgentId, 'chief')
+  assert.deepEqual(f.trials, ['workspace-1'])
+  assert.match(result.session!.reply.message, /subscription/)
+})
+
+test('flow 4 team tasks run with Overlay, and members skip the team question', async () => {
+  const team = v4Fixture()
+  let result = await answerV4(team, ['Search', 'Ada', 'Design', 'With a team'])
+  result = await team.service.act('user-1', 'workspace-1', { action: 'draft_task', runId: result.session!.runId, revision: result.session!.revision, value: 'Draft an update' })
+  assert.equal(result.session?.taskAgentPrincipalId, 'overlay-principal')
+
+  const member = v4Fixture()
+  let started = await member.service.start('user-1', 'workspace-1', { member: true })
+  for (const value of ['X', 'Ada', 'Operations']) {
+    started = await member.service.act('user-1', 'workspace-1', { action: 'answer', runId: started.session!.runId, revision: started.session!.revision, value })
+  }
+  assert.equal(started.session?.step, 'task')
+  started = await member.service.act('user-1', 'workspace-1', { action: 'draft_task', runId: started.session!.runId, revision: started.session!.revision, value: 'Report' })
+  assert.equal(started.session?.taskAgentPrincipalId, 'overlay-principal')
+  assert.deepEqual(member.trials, [])
+})
+
+test('flow 4 solo falls back to Overlay without a personal chief', async () => {
+  const f = v4Fixture({ personalChief: false })
+  let result = await answerV4(f, ['YouTube', 'Ada', 'Engineering', 'Just me'])
+  result = await f.service.act('user-1', 'workspace-1', { action: 'draft_task', runId: result.session!.runId, revision: result.session!.revision, value: 'Write a spec' })
+  assert.equal(result.session?.taskAgentPrincipalId, 'overlay-principal')
 })
