@@ -1209,7 +1209,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_terminal = tool({
         description:
           'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
-          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer stays up while a session is running, so a long build or render keeps going between your tool calls.',
         inputSchema: computerTerminalSchema,
         ...(options.computerApprovalContext !== undefined
           ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }

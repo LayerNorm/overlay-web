@@ -3034,7 +3034,15 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index('by_runId', ['runId'])
     .index('by_rootRunId', ['rootRunId'])
-    .index('by_parentRunId', ['parentRunId']),
+    .index('by_parentRunId', ['parentRunId'])
+    .index('by_updatedAt', ['updatedAt']),
+
+  /** Runs the stalled-run sweep already reported as orphaned (their workflow ended while the run did not). */
+  harnessStalledAlerts: defineTable({
+    runId: v.string(),
+    workflowRunId: v.string(),
+    alertedAt: v.number(),
+  }).index('by_runId', ['runId']),
 
   harnessPlanSteps: defineTable({
     runId: v.string(),

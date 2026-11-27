@@ -87,11 +87,17 @@ next segment after that step. Any join that ends without its children
 settling (an error or the rollover) sets the delivery back to `running`; a
 successor that waits again projects the wait again.
 
-An Overlay fault (one of the run-bookkeeping checks, or an unclassified
-error; diagnostic code `INTERNAL_ERROR`) is replayed from the last model
-boundary instead of ending the run, only when no tool had started since that
-boundary (`settleInternalFault` in `runner.ts`), so no tool can run twice. A
-reserved call is settled as a zero-usage interrupted receipt first. At most
-two replays per workflow segment; this workflow must still own the run.
-Authorization, funding, deadline and provider-account failures are never
-replayed.
+A temporary fault inside a model invocation (an Overlay bookkeeping check or
+unclassified error, `INTERNAL_ERROR`; a dropped model or tool outcome; a
+provider timeout, outage or rate limit; the backend being unavailable) is
+replayed from the last model boundary instead of ending the run
+(`settleInternalFault` in `runner.ts`), with a pause from 5 seconds up to 5
+minutes and no limit on replays. If tools had started since the boundary, the
+replay tells the model which ones may or may not have taken effect, so it
+checks before repeating them (`interruptedStepNote`); repeated identical creates
+are also refused as duplicates. After two failures in a row the replay also
+tells the model to split large output (`REPEATED_FAILURE_NOTE`). Every fifth
+replay raises a Sentry alert (`harness_run_retrying`). A reserved call is
+settled as a zero-usage interrupted receipt first, and this workflow must
+still own the run. Authorization, funding, deadline and provider-account
+failures are never replayed.
