@@ -88,9 +88,9 @@ function AuthenticatedOnboardingShell({
   const [intro, setIntro] = useState(false);
   const [active, setActive] = useState(false);
   const [handoff, setHandoff] = useState<{ taskId: string; session: OnboardingSession } | null>(null);
-  // A new account on Overlay Desktop sets up the app first; the conversation starts with its answers.
-  const desktop = useDesktopBridge();
-  const desktopApp = Boolean(desktop?.info.capabilities.includes("auth"));
+  // A new account on Overlay Desktop sets up the app first; the conversation starts with its answers. The app's
+  // preload exposes its bridge before the page runs, so this is known before the bridge's handshake finishes.
+  const [desktopApp] = useState(() => typeof window !== "undefined" && "overlayDesktop" in window);
   const { user } = useAuth();
   const [desktopSetup, setDesktopSetup] = useState(false);
   const conversation = useRef<HTMLDivElement>(null);

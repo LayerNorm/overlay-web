@@ -44,6 +44,8 @@ export function DesktopOnboarding({ userId, userName, personalWorkspaceId, onSta
   const step: DesktopSetupStep = steps.includes(state.step) ? state.step : steps[0]!
   const index = steps.indexOf(step)
   const go = (offset: number) => update({ step: steps[Math.min(steps.length - 1, Math.max(0, index + offset))]! })
+  // Until the app's bridge answers, which screens exist is unknown; don't fall back to the first one.
+  if (!capabilities) return <div className="grid h-full place-items-center bg-background"><Loader2 size={18} className="animate-spin text-(--muted)" /></div>
 
   const finish = async (paid: boolean, billingInitialized: boolean) => {
     const prefill: OnboardingPrefill = {
