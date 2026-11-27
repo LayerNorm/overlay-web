@@ -97,6 +97,27 @@ test('a Computer with a live run past its session window keeps running', async (
   assert.equal(fixture.instances[0]?.stops, 0)
 })
 
+test('an idle Computer with a terminal session still running keeps running so the job is not killed', async () => {
+  const fixture = lifecycleFixture()
+  const computer = await fixture.service.provision({
+    actorUserId: 'user-1', workspaceId: 'ws-1', ownerType: 'user', ownerId: 'user-1', size: 'default',
+  })
+  const leaseId = `computer:${computer.id}`
+  fixture.setNow(now + 10 * 60 * 60_000)
+  let checked = 0
+  ;(fixture.service as unknown as { hasRunningTerminalSessions: () => Promise<boolean> }).hasRunningTerminalSessions = async () => {
+    checked += 1
+    return true
+  }
+
+  const result = await fixture.service.handleLease(fixture.leaseRows.get(leaseId)!, 'idle_check')
+
+  assert.equal(checked, 1)
+  assert.equal(result.reason, 'computer_terminal_running')
+  assert.equal(fixture.leaseRows.get(leaseId)?.status, 'running')
+  assert.equal(fixture.instances[0]?.stops, 0)
+})
+
 test('an idle Computer past its session window still stops through the idle path', async () => {
   const fixture = lifecycleFixture()
   const computer = await fixture.service.provision({

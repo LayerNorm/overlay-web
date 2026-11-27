@@ -18,6 +18,7 @@ import {
   readHarnessTranscriptForDelivery, reconcileSettledHarnessTranscriptForDelivery,
 } from '@/server/harness/harness-transcript'
 import { harnessDiagnosticForFailure, logHarnessFailure } from '@/server/harness/harness-diagnostics'
+import { reportHarnessStopped } from '@/server/harness/harness-alerts'
 import { harnessDiagnosticMessage } from '@overlay/agent-runtime/harness-diagnostic'
 import { runOverlayHarness, type HarnessExecutionResult } from '@/server/harness/runner'
 import { HARNESS_CONTROL_TOOLS } from '@/server/harness/context'
@@ -134,6 +135,7 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
       logHarnessFailure(access.runId, diagnostic, Object.assign(
         new Error(`The run ended while blocked (${result.snapshot.blocker?.kind ?? 'none'}, ${result.snapshot.status}).`),
         { name: 'HarnessBlockedFinalization' }))
+      await reportHarnessStopped({ runId: access.runId, code: diagnostic.code, stage: diagnostic.stage, diagnosticId: diagnostic.diagnosticId })
       const reason = harnessDiagnosticMessage(diagnostic)
       result.snapshot = await applyHarnessOperation(access, 'blocked-finalization', {
         type: 'terminate', status: 'failed', reason, diagnostic,
@@ -155,6 +157,9 @@ export async function nativeHarnessWorkflow(input: NativeHarnessWorkflowInput) {
     }
     const diagnostic = harnessDiagnosticForFailure(access.runId, state, error, 'model')
     logHarnessFailure(access.runId, diagnostic, error)
+    if (!isTerminalHarnessStatus(state.status)) {
+      await reportHarnessStopped({ runId: access.runId, code: diagnostic.code, stage: diagnostic.stage, diagnosticId: diagnostic.diagnosticId })
+    }
     const diagnosticFields = state.policy.publicProgressVersion === 1 ? { diagnostic } : {}
     const reason = state.policy.publicProgressVersion === 1 ? harnessDiagnosticMessage(diagnostic) : harnessExecutionFailureReason(error)
     const snapshot = isTerminalHarnessStatus(state.status) ? state

@@ -10,7 +10,7 @@ import { buildHarnessStepInstructions } from './context'
 import { createHarnessTools } from './tools'
 import { getLanguageModel } from '@/server/ai/model-runtime'
 import { executePersonalChatWorkToolResult } from '@/server/conversations/personal-chat-work-tools'
-import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, runOverlayHarness, settleInternalFault } from './runner'
+import { HARNESS_CUT_OFF_CONTINUATION_MESSAGE, internalFaultPauseMs, interruptedStepNote, REPEATED_FAILURE_NOTE, runOverlayHarness, settleInternalFault, withRecoveryNotes } from './runner'
 import { createHarnessAuthorizedTools } from './authorized-tools'
 import { publicHarnessStepPersistence } from './harness-transcript'
 import { buildNativeHarnessDelivery } from './native-tool-metrics'
@@ -22,6 +22,8 @@ import { HarnessWaitRollover } from './waits'
 import { joinStepTranscripts } from '@/shared/chat/step-text-join'
 
 vi.mock('server-only', () => ({}))
+const alerts = vi.hoisted(() => ({ retrying: vi.fn(), stopped: vi.fn() }))
+vi.mock('./harness-alerts', () => ({ reportHarnessRetrying: alerts.retrying, reportHarnessStopped: alerts.stopped }))
 vi.mock('@/server/ai/model-runtime', () => ({ getLanguageModel: vi.fn() }))
 beforeEach(() => { vi.mocked(getLanguageModel).mockReset() })
 
@@ -314,19 +316,38 @@ test('an internal fault before any tool starts replays the step instead of endin
   expect(provider.doStreamCalls).toHaveLength(3)
 })
 
-test('an internal fault after a tool started is not replayed, so no tool runs twice', async () => {
+test('an internal fault is replayed however many times it repeats, after tools started too, but only by its owner', async () => {
   const f = fixture(false)
   const recover = settleInterruptedCalls(f)
   await f.ports.claim()
   await f.ports.apply('reserve', { type: 'reserve_model', id: 'model:0', maxCostMicros: 0 })
   const fault = new Error('Native delivery execution changed.')
   const execution = { executionOwner: 'workflow', executionGeneration: 0, modelCall: 0, resumes: 0 }
-  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 1 })).resolves.toBeNull()
-  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0, resumes: 2 })).resolves.toBeNull()
   await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0, executionOwner: 'another-workflow' })).resolves.toBeNull()
   expect(recover).not.toHaveBeenCalled()
-  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 0 })).resolves.toBe(1)
+  await expect(settleInternalFault(fault, f.ports, { ...execution, toolsStarted: 1, resumes: 9 })).resolves.toBe(1)
   expect(recover).toHaveBeenCalledExactlyOnceWith('model:0', fault, { internalFault: true })
+})
+
+test('a permanent failure is not replayed as a temporary fault', async () => {
+  const f = fixture(false)
+  await f.ports.claim()
+  const execution = { executionOwner: 'workflow', executionGeneration: 0, modelCall: 0, resumes: 0, toolsStarted: 0 }
+  await expect(settleInternalFault(new Error('Native harness permissions were revoked.'), f.ports, execution)).resolves.toBeNull()
+})
+
+test('replays pause longer each time, up to five minutes', () => {
+  expect([0, 1, 2, 6, 40].map(internalFaultPauseMs)).toEqual([5_000, 10_000, 20_000, 300_000, 300_000])
+})
+
+test('a replayed step tells the model which interrupted tools may have run, and to split work that keeps failing', () => {
+  const base = [{ role: 'user' as const, content: 'Build the page.' }]
+  expect(withRecoveryNotes(base, undefined, 1)).toBe(base)
+  const note = interruptedStepNote(['write_file', 'computer_exec', 'write_file'])
+  expect(note).toContain('write_file, computer_exec')
+  const replay = withRecoveryNotes(base, note, 2)
+  expect(replay).toHaveLength(2)
+  expect(replay[1]).toEqual({ role: 'user', content: `${note}\n\n${REPEATED_FAILURE_NOTE}` })
 })
 
 test('a tool that starts running is reported, and one refused before running is not', async () => {
@@ -342,15 +363,21 @@ test('a tool that starts running is reported, and one refused before running is 
   await expect(tools.write!.execute!({}, options)).rejects.toThrow()
   expect(started).not.toHaveBeenCalled()
   await tools.read!.execute!({}, options)
-  expect(started).toHaveBeenCalledOnce()
+  expect(started).toHaveBeenCalledExactlyOnceWith('read')
 })
 
-test('an internal fault that keeps repeating still ends the task after two replays', async () => {
+test('an internal fault that keeps repeating never ends the task, raises an alert, and the task finishes once it clears', async () => {
   const f = fixture(false)
   settleInterruptedCalls(f)
-  const provider = model(() => { throw new Error('Native delivery execution changed.') })
-  await expect(runOverlayHarness({ ...input, tools: {} }, f.ports)).rejects.toThrow('Native delivery execution changed.')
-  expect(provider.doStreamCalls).toHaveLength(3)
+  alerts.retrying.mockClear()
+  const provider = model(index => {
+    if (index < 7) throw new Error('Native delivery execution changed.')
+    return 'Done after the fault cleared.'
+  })
+  const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+  expect(result.snapshot.status).toBe('completed')
+  expect(provider.doStreamCalls).toHaveLength(8)
+  expect(alerts.retrying).toHaveBeenCalledWith(expect.objectContaining({ kind: 'fault', attempts: 5 }))
 })
 
 test('a revoked authorization is never replayed as an internal fault', async () => {
@@ -1483,20 +1510,23 @@ test('deadline refusal identifies the time limit without claiming workspace cred
   expect(provider.doStreamCalls).toHaveLength(0)
 })
 
-test('unexpected runnable-state errors propagate instead of becoming budget blockers', async () => {
-  const f = fixture()
-  const provider = model(() => 'Must not run')
-  const assertRunnable = vi.spyOn(state, 'assertHarnessRunnable').mockImplementation(() => {
-    throw new Error('Unexpected authorization failure')
+test('unexpected runnable-state errors are retried as faults, never turned into budget blockers', async () => {
+  const f = fixture(false)
+  const provider = model(() => 'Recovered after the fault cleared.')
+  const original = state.assertHarnessRunnable
+  let failures = 0
+  const assertRunnable = vi.spyOn(state, 'assertHarnessRunnable').mockImplementation((...args) => {
+    if (failures++ < 3) throw new Error('Unexpected authorization failure')
+    return original(...args)
   })
   try {
-    await expect(runOverlayHarness({ ...input, tools: {} }, f.ports))
-      .rejects.toThrow('Unexpected authorization failure')
+    const result = await runOverlayHarness({ ...input, tools: {} }, f.ports)
+    expect(result.snapshot.status).toBe('completed')
   } finally {
     assertRunnable.mockRestore()
   }
   expect((await f.ports.read()).blocker).toBeUndefined()
-  expect(provider.doStreamCalls).toHaveLength(0)
+  expect(provider.doStreamCalls).toHaveLength(1)
 })
 
 test('an outstanding model reservation is not reported as a budget blocker', async () => {
@@ -1751,33 +1781,41 @@ test('a recovered stream failure does not persist its partial invocation message
   expect(JSON.stringify({ messages: result.messages, steps: result.steps })).not.toContain('Partial failed invocation.')
 })
 
-test('two recovered interruptions retry before the third interruption fails the run', async () => {
+test('interruptions keep retrying past the former limit of two until the call succeeds', async () => {
   const f = fixture(false)
-  let interruptions = 0
   const recover = vi.fn(async (receiptId: string) => {
     f.recordInterruption(receiptId)
-    interruptions += 1
-    return interruptions <= 2
+    return true
   })
   f.ports.recoverModelFailure = recover
+  let calls = 0
   const provider = new MockLanguageModelV4({
     doStream: async () => ({
       stream: new ReadableStream<LanguageModelV4StreamPart>({
         start(controller) {
           controller.enqueue({ type: 'stream-start', warnings: [] })
-          controller.enqueue({ type: 'text-start', id: 'partial' })
-          controller.enqueue({ type: 'text-delta', id: 'partial', delta: 'Interrupted output.' })
-          controller.error(new Error('stream interruption'))
+          controller.enqueue({ type: 'text-start', id: 'text' })
+          if (calls++ < 4) {
+            controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Interrupted output.' })
+            controller.error(new Error('stream interruption'))
+            return
+          }
+          controller.enqueue({ type: 'text-delta', id: 'text', delta: 'Recovered final answer.' })
+          controller.enqueue({ type: 'text-end', id: 'text' })
+          controller.enqueue({ type: 'finish', finishReason: { unified: 'stop', raw: 'stop' },
+            usage: { inputTokens: { total: 10, noCache: 10, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 3, text: 3, reasoning: 0 } } })
+          controller.close()
         },
       }),
     }),
   })
   vi.mocked(getLanguageModel).mockResolvedValue(provider)
 
-  await expect(runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)).rejects.toThrow()
+  const result = await runOverlayHarness({ ...input, model: { ...input.model, modelId: 'openrouter/free' }, tools: {} }, f.ports)
 
-  expect(recover).toHaveBeenCalledTimes(3)
-  expect(provider.doStreamCalls).toHaveLength(3)
+  expect(recover).toHaveBeenCalledTimes(4)
+  expect(provider.doStreamCalls).toHaveLength(5)
+  expect(result.snapshot.resultSummary).toBe('Recovered final answer.')
 })
 
 test('model recovery preserves completed tool results and settled steps before the failed call', async () => {

@@ -667,7 +667,9 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
     tools.write_file = tool({
       description:
         'Create a text file in the Overlay workspace (name, optional folderId), or replace an existing file\'s text (fileId). ' +
-        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change.',
+        'When replacing, pass the revision from read_file as expectedRevision so you never overwrite a newer change. ' +
+        'Write the file\'s text exactly as it should be saved: Markdown as plain Markdown (never backslash-escape **, #, [ or _), ' +
+        'and a web page as a complete .html file, which Files shows rendered.',
       inputSchema: z.object({
         fileId: z.string().optional().describe('Existing file to replace; omit to create a new file'),
         name: z.string().optional().describe('File name with extension, e.g. "report.md" (required when creating)'),
@@ -1207,7 +1209,7 @@ export function buildOverlayToolSet(options: OverlayToolsOptions): ToolSet {
       tools.computer_terminal = tool({
         description:
           'Run long-running or non-interactive commands on the bound Overlay Computer, such as builds, servers, or watchers. ' +
-          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer may idle-stop if the agent stops making tool calls, which ends its sessions.',
+          'Start a session, poll its output with read, and cancel it when done. Starting a command may require approval. The Computer stays up while a session is running, so a long build or render keeps going between your tool calls.',
         inputSchema: computerTerminalSchema,
         ...(options.computerApprovalContext !== undefined
           ? { needsApproval: (input) => toolRequiresApproval('computer_terminal', input, { approvalMode: options.approvalMode }) }

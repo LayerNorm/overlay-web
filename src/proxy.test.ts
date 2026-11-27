@@ -225,3 +225,15 @@ test('the browser half of desktop sign-in still reaches the sign-in page', async
   assert.equal(location.pathname, '/auth/sign-in')
   assert.equal(location.searchParams.get('redirect'), destination)
 })
+
+test('stored file content owns its security policy so the app policy cannot replace its sandbox', async () => {
+  const { ownsContentSecurityPolicy } = await import('./proxy')
+  assert.equal(ownsContentSecurityPolicy('/api/v1/files/abc123/content'), true)
+  assert.equal(ownsContentSecurityPolicy('/api/v1/outputs/out1/content'), true)
+  assert.equal(ownsContentSecurityPolicy('/api/v1/files'), false)
+  assert.equal(ownsContentSecurityPolicy('/api/v1/files/abc/content/extra'), false)
+  const response = await proxy(new NextRequest(origin + '/api/v1/files/abc123/content?view=page'))
+  assert.equal(response.headers.get('content-security-policy'), null)
+  const other = await proxy(new NextRequest(origin + '/api/v1/work'))
+  assert.notEqual(other.headers.get('content-security-policy') ?? other.headers.get('content-security-policy-report-only'), null)
+})

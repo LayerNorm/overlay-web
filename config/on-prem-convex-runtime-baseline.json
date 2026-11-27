@@ -124,6 +124,7 @@
     "src/app/api/v1/github/connect/route.ts",
     "src/app/api/v1/github/repositories/route.ts",
     "src/app/api/v1/harness/continuation/route.ts",
+    "src/app/api/v1/harness/stalled/route.ts",
     "src/app/api/v1/integrations/route.ts",
     "src/app/api/v1/integrations/slack/events/route.ts",
     "src/app/api/v1/integrations/slack/install/route.ts",
@@ -309,6 +310,11 @@
       "cadence": "{ minutes: 1 }",
       "name": "Harness continuation reconciliation",
       "target": "internal.harness.continuations.dispatchDue"
+    },
+    {
+      "cadence": "{ minutes: 10 }",
+      "name": "Harness stalled-run sweep",
+      "target": "internal.harness.stalledRuns.sweep"
     },
     {
       "cadence": "{ hourUTC: 4, minuteUTC: 30 }",

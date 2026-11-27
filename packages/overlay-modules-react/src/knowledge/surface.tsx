@@ -16,6 +16,7 @@ import {
   KnowledgePendingNotice,
   MemoryDetailDialog,
 } from './dialogs'
+import { isStoredFileContentPath } from '@overlay/app-core/file-viewer'
 import { KnowledgeFileDetailPanel } from './file-detail-panel'
 import { HiddenKnowledgeFileInputs, KnowledgeFilesPanel, KnowledgeMemoriesPanel } from './panels'
 import { KnowledgeBulkSelectionContext, KnowledgeViewHeader, type KnowledgeBulkSelection } from './view-header'
@@ -255,9 +256,12 @@ function KnowledgeSurfaceBody({
     >
       {activeTab === 'files' && opened.selectedFile && (
         <KnowledgeFileDetailPanel
+          fileId={opened.selectedFile._id}
           fileName={opened.selectedFile.name}
-          // Only a prefix of text kept in object storage is loaded here; saving it would truncate the file.
-          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore && !opened.fileContentLoading}
+          // Only a prefix of text kept in object storage is loaded here; saving it would truncate the file. An
+          // uploaded file kept in object storage lists only its download path, which is not its text either.
+          isEditable={filePort.isEditable(opened.selectedFile.name) && !opened.selectedFile.textInObjectStore
+            && !opened.fileContentLoading && !isStoredFileContentPath(opened.fileContent)}
           fileContent={opened.fileContent}
           onContentChange={opened.handleFileContentChange}
           renderViewer={() =>

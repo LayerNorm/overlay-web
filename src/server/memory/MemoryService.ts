@@ -1,6 +1,6 @@
 import 'server-only'
 
-import { segmentMemoryForIngestion } from '@/shared/knowledge/memory-display-segments'
+import { MAX_MEMORY_INGESTION_CHUNKS, segmentMemoryForIngestion } from '@/shared/knowledge/memory-display-segments'
 import type {
   MemoryActor,
   MemoryRecord,
@@ -10,7 +10,6 @@ import type {
 } from './MemoryRepository'
 
 const MAX_MEMORY_CONTENT_CHARS = 20_000
-const MAX_MEMORY_CHUNKS = 20
 
 export class MemoryService {
   constructor(private readonly repository: MemoryRepository) {}
@@ -52,7 +51,7 @@ export class MemoryService {
   }): Promise<{ count: number; ids: string[]; memory: MemoryRecord }> {
     const content = validateRouteContent(args.content)
     const chunks = segmentMemoryForIngestion(content)
-    if (chunks.length > MAX_MEMORY_CHUNKS) throw new MemoryServiceError('memory content produced too many chunks', 413)
+    if (chunks.length > MAX_MEMORY_INGESTION_CHUNKS) throw new MemoryServiceError('memory content produced too many chunks', 413)
     const source = normalizeSource(args.source)
     const memories = await Promise.all(chunks.map((chunk) =>
       this.repository.create({

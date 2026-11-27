@@ -6,6 +6,8 @@ const crons = cronJobs()
 crons.interval('native deployment policy refresh', { minutes: 1 }, internal.platform.nativePolicy.refresh, {})
 
 crons.interval('Harness continuation reconciliation', { minutes: 1 }, internal.harness.continuations.dispatchDue, {})
+// Runs whose workflow died while they were still running are reported (internal/plans/NEVER_STOP_RUNS_PLAN.md, N2).
+crons.interval('Harness stalled-run sweep', { minutes: 10 }, internal.harness.stalledRuns.sweep, {})
 
 
 crons.interval('expired local tool calls', { minutes: 15 }, internal.agents.localToolCalls.cleanupExpired)
