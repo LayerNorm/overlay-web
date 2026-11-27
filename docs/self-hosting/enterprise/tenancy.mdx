@@ -80,6 +80,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `apiIdempotencyKeys` | `userId` | Deployment boundary | Add `tenantId`; idempotency keys must be tenant-scoped. |
 | `apiKeys` | `userId` | Deployment boundary | Add `tenantId`; validation, scopes, rotation, revocation, audit, and rate limits must enforce tenant context. |
 | `tokenUsage` | `userId` | Deployment boundary | Add `tenantId`; usage and billing rollups must be tenant-scoped. |
+| `usageDays` | `userId` | Deployment boundary | Add `tenantId`; daily charge totals per billing account and person must be tenant-scoped like the charges they add up. |
 | `budgetReservations` | `userId` | Deployment boundary | Add `tenantId`; reservation and reconciliation queries must be tenant-scoped. |
 | `usageOperations` | `userId` | Deployment boundary | Add `tenantId`; operation identity, request fingerprints, and reconciliation must be tenant-scoped. |
 | `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
