@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-27
+
 - First-run setup for new accounts (with overlay-web's desktop onboarding). A new `localSetup` bridge capability lists what Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI keep on this computer (instructions, skills, subagents and MCP servers) by name only, and imports the ones the person ticks through Overlay's own API with the app's session, so file contents and header tokens never reach the page. It also finds model keys in the login shell (shown by name and last four characters) and, on *Use this key*, checks one with the provider and keeps it in the keychain, and it notices Claude Code and Codex plan sign-ins for later. Local (command) MCP servers are listed but not imported.
 
 ## [0.5.0] - 2026-11-26
