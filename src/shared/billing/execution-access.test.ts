@@ -46,3 +46,16 @@ test('work stops once less than 2% of the workspace budget is left, using the re
   assert.equal(workspaceBudgetStopLineCents({ totalCents: 0 }), 1)
   assert.equal(workspaceBudgetLow({ remainingCents: workspaceBudgetStopLineCents({ totalCents: 12_345 }), totalCents: 12_345 }), false)
 })
+
+test('a free trial runs until its window ends or its credit is spent', () => {
+  const trial = { billingEnabled: true, accountStatus: 'active', remainingCents: 100, totalCents: 100, now: 1_000,
+    subscription: { planKind: 'free', status: 'trialing', currentPeriodStart: 500, currentPeriodEnd: 500 + 3 * 24 * 60 * 60 * 1000 } }
+  assert.equal(workspaceExecutionAccess(trial).state, 'ready')
+  assert.equal(workspaceExecutionAccess({ ...trial, now: trial.subscription.currentPeriodEnd }).state, 'subscription_required')
+  assert.equal(workspaceExecutionAccess({ ...trial, now: 499 }).state, 'subscription_required')
+  assert.equal(workspaceExecutionAccess({ ...trial, remainingCents: 1 }).state, 'budget_exhausted')
+  assert.equal(workspaceExecutionAccess({ ...trial, remainingCents: 1, checkBudget: false }).state, 'budget_exhausted')
+  assert.equal(workspaceExecutionAccess({ ...trial, usedCents: 200 }).state, 'budget_exhausted')
+  assert.equal(workspaceExecutionAccess({ ...trial, subscription: { ...trial.subscription, currentPeriodEnd: 500 + 30 * 24 * 60 * 60 * 1000 } }).state, 'subscription_required')
+  assert.equal(workspaceExecutionAccess({ ...trial, subscription: { ...trial.subscription, planKind: 'paid' } }).canExecute, false)
+})

@@ -1,8 +1,8 @@
 import { v } from 'convex/values'
-import { workspaceExecutionAccess } from '@/shared/billing/execution-access'
+import { WORKSPACE_TRIAL_CREDIT_CENTS, WORKSPACE_TRIAL_DURATION_MS, WORKSPACE_TRIAL_HARD_CAP_CENTS, workspaceExecutionAccess } from '@/shared/billing/execution-access'
 import { internalMutation, internalQuery, mutation, query, type MutationCtx, type QueryCtx } from '../_generated/server'
 import { requireServerSecret } from '../lib/auth'
-import { canceledPlanCreditPatch, ensureEmptyBalance, requireCanonicalBalanceAccount } from './accountModel'
+import { canceledPlanCreditPatch, ensureEmptyBalance, ensureWorkspaceBillingAccount, requireCanonicalBalanceAccount } from './accountModel'
 
 async function requireCanonicalAccountById(ctx: { db: MutationCtx['db'] }, billingAccountId: string) {
   const account = await ctx.db.query('billingAccounts')
@@ -356,18 +356,25 @@ async function fundPaidPeriod(ctx: MutationCtx, args: {
   // Retry after legitimate reservations settle, without losing the webhook receipt.
   if (renewal && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
   const includedMicros = args.amountCents * 10_000
+  // The first paid period replaces a trial: its credit and what it paid for leave the ledger, so the plan starts full.
+  const trialGrantMicros = !renewal ? Math.min(subscription.trialGrantMicros ?? 0, balance.institutionalGrantMicros) : 0
+  if (trialGrantMicros > 0 && balance.reservedMicros > 0) throw new Error('billing_period_rollover_has_active_reservations')
+  const trialReset = trialGrantMicros > 0
+    ? { institutionalGrantMicros: balance.institutionalGrantMicros - trialGrantMicros, usedMicros: 0, allowanceUsedMicros: 0 }
+    : {}
   if (!renewal && balance.includedMicros !== 0 && balance.includedMicros !== includedMicros) {
     throw new Error('paid_period_requires_balance_reconciliation')
   }
-  if (!renewal && balance.usedMicros + balance.reservedMicros > includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros) {
+  if (!renewal && !trialGrantMicros && balance.usedMicros + balance.reservedMicros > includedMicros + balance.institutionalGrantMicros + balance.topUpPurchasedMicros) {
     throw new Error('paid_period_requires_balance_reconciliation')
   }
   const now = Date.now()
   await ctx.db.patch(subscription._id, {
     paidInvoiceId: args.paidInvoiceId, paidPeriodStart: args.paidPeriodStart, paidPeriodEnd: args.paidPeriodEnd, updatedAt: now,
+    ...(trialGrantMicros > 0 ? { trialGrantMicros: 0 } : {}),
   })
   await ctx.db.patch(balance._id, {
-    includedMicros, mode: 'budgeted',
+    includedMicros, mode: 'budgeted', ...trialReset,
     ...(renewal ? { usedMicros: 0, reservedMicros: 0, allowanceUsedMicros: 0, topUpPurchasedMicros: 0, topUpBalanceMicros: 0 } : {}),
     version: balance.version + 1, updatedAt: now,
   })
@@ -785,9 +792,11 @@ export const upsertFromStripeInternal = internalMutation({
     if (existing?.status === 'canceled' && args.status === 'active' && args.stripeSubscriptionId === existing.providerSubscriptionId) return { applied: false }
     const now = Date.now()
     const isCancellation = args.status === 'canceled' && args.planKind === 'free' && args.planAmountCents === 0
+    const replacingTrial = existing?.status === 'trialing' && existing.planKind === 'free' && existing.provider === 'overlay'
     const value = {
       billingAccountId: args.billingAccountId,
       provider: 'stripe',
+      ...(replacingTrial ? { currentPeriodStart: undefined, currentPeriodEnd: undefined } : {}),
       ...(args.stripeSubscriptionId && args.stripeSubscriptionId !== existing?.providerSubscriptionId
         ? { paidPeriodStart: undefined, paidPeriodEnd: undefined, paidInvoiceId: undefined } : {}),
       ...(args.stripeCustomerId ?? existing?.providerCustomerId
@@ -913,5 +922,40 @@ export const workspaceAccountByProviderReferenceInternal = internalQuery({
       if (account?.scope === 'workspace') return account.billingAccountId
     }
     return null
+  },
+})
+
+/**
+ * Starts a new workspace's free trial: Overlay funds WORKSPACE_TRIAL_CREDIT_CENTS of usage for WORKSPACE_TRIAL_DAYS.
+ * A workspace gets one trial, and only before it has ever had a plan (any subscription row ends eligibility), so
+ * replays and second onboarding runs never add credit. Paid features (automations, computers, storage) stay locked.
+ */
+export const startWorkspaceTrialByServer = mutation({
+  args: { serverSecret: v.string(), workspaceId: v.string(), userId: v.string() },
+  returns: v.object({ started: v.boolean() }),
+  handler: async (ctx, args) => {
+    requireServerSecret(args.serverSecret)
+    if (WORKSPACE_TRIAL_CREDIT_CENTS > WORKSPACE_TRIAL_HARD_CAP_CENTS) throw new Error('trial_credit_exceeds_cap')
+    const account = await ensureWorkspaceBillingAccount(ctx, { workspaceId: args.workspaceId, primaryBillingContactUserId: args.userId })
+    if (account.status !== 'active') return { started: false }
+    const existing = await ctx.db.query('billingAccountSubscriptions')
+      .withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', account.billingAccountId)).first()
+    if (existing) return { started: false }
+    const balance = await ensureEmptyBalance(ctx, account.billingAccountId)
+    if (balance.usedMicros > 0 || balance.includedMicros > 0 || balance.topUpPurchasedMicros > 0) return { started: false }
+    const now = Date.now()
+    const grantMicros = WORKSPACE_TRIAL_CREDIT_CENTS * 10_000
+    await ctx.db.insert('billingAccountSubscriptions', {
+      billingAccountId: account.billingAccountId, provider: 'overlay', planKind: 'free', planVersion: 'variable_v2',
+      planAmountCents: 0, markupBasisPoints: account.markupBasisPoints, status: 'trialing',
+      autoTopUpEnabled: false, autoTopUpAmountCents: 0,
+      currentPeriodStart: now, currentPeriodEnd: now + WORKSPACE_TRIAL_DURATION_MS,
+      trialGrantMicros: grantMicros, trialStartedAt: now, createdAt: now, updatedAt: now,
+    })
+    await ctx.db.patch(balance._id, {
+      institutionalGrantMicros: balance.institutionalGrantMicros + grantMicros, mode: 'budgeted',
+      version: balance.version + 1, updatedAt: now,
+    })
+    return { started: true }
   },
 })

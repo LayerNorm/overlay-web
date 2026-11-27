@@ -14,6 +14,7 @@ import { hashOperationalIdentifier } from '@/server/security/operational-key-has
 import { workspaceBudgetLow, workspaceBudgetStopLineCents } from '@/shared/billing/execution-access'
 import type { BillingAccountSpendLimitRecord } from '@/shared/billing/billing-payer'
 import { requireWorkspaceExecution } from './WorkspaceExecutionPolicy'
+import { isWorkspaceTrial } from '@/shared/billing/execution-access'
 import type { BillingRepository } from './BillingRepository'
 import {
   buildInsufficientCreditsPayload,
@@ -137,7 +138,8 @@ export async function ensureProviderBudgetNotLow(params: {
           minimumRequiredCents: workspaceBudgetStopLineCents(totals),
         })
   const after = getBudgetTotals(budget.entitlements)
-  if (!isPaidPlan(budget.entitlements) || workspaceBudgetLow(after)) {
+  const trial = payer.scope === 'workspace' && isWorkspaceTrial(budget.entitlements)
+  if ((!isPaidPlan(budget.entitlements) && !trial) || workspaceBudgetLow(after)) {
     logBudgetSecurityEvent('owner_funded_budget_declined', params, {
       remainingCents: after.remainingCents,
       totalCents: after.totalCents,

@@ -5,7 +5,7 @@ import { mutation, query, internalMutation, internalQuery, type MutationCtx, typ
 import { requireAccessToken, requireServerSecret, validateServerSecret } from '../lib/auth'
 import { logAuthDebug, summarizeJwtForLog } from '../lib/authDebug'
 import { getOrCreateSubscription, getStorageBytesUsed, getStorageLimitForUser } from '../files/lib/storageQuota'
-import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
+import { fundedWorkspaceAccountFor } from '../billing/workspacePayer'
 import { workspaceBudgetLow } from '../../src/shared/billing/execution-access'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 import { previewProviderBudgetSpent, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
@@ -329,7 +329,7 @@ export const recordBatch = mutation({
       }
     }
     // Plans belong to workspaces: in a workspace with a paid plan the workspace pays, never the person.
-    const paidWorkspace = await paidWorkspaceAccountFor(ctx, userId, workspaceId)
+    const paidWorkspace = await fundedWorkspaceAccountFor(ctx, userId, workspaceId)
     if (paidWorkspace) {
       const { budgetLow } = await chargeWorkspaceDirect(ctx, {
         billingAccountId: paidWorkspace.billingAccountId, userId, programmaticSubjectId: programmaticSubjectId?.trim() || undefined, operationId, events,

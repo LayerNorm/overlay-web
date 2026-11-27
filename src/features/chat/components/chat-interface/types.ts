@@ -57,6 +57,8 @@ export interface ChatOutput {
 export interface Entitlements {
   tier: 'free' | 'pro' | 'max'
   planKind?: 'free' | 'paid'
+  /** The plan's state; `trialing` on the free plan is Overlay's funded trial. */
+  status?: string
   creditsUsed: number
   creditsTotal: number
   budgetUsedCents?: number

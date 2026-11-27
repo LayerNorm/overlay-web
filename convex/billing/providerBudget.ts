@@ -2,7 +2,7 @@ import { v } from 'convex/values'
 import { spendLimitsReached, spendSubjectsFor } from '../lib/spendLimitCharges'
 import { internalQuery } from '../_generated/server'
 import { workspaceExecutionAccess } from '../../src/shared/billing/execution-access'
-import { paidWorkspaceAccountFor } from './workspacePayer'
+import { fundedWorkspaceAccountFor } from './workspacePayer'
 
 /**
  * Background provider work (embeddings, memory extraction) pays from a paid workspace. Before the call this reads
@@ -24,7 +24,7 @@ export const providerBudgetGate = internalQuery({
     const alreadyCharged = operationId
       ? (await ctx.db.query('usageOperations').withIndex('by_operationId', (q) => q.eq('operationId', operationId)).first()) !== null
       : false
-    const paid = await paidWorkspaceAccountFor(ctx, args.userId, args.workspaceId)
+    const paid = await fundedWorkspaceAccountFor(ctx, args.userId, args.workspaceId)
     if (!paid) return { allowed: false, alreadyCharged }
     const [account, balance, subscription] = await Promise.all([
       ctx.db.query('billingAccounts').withIndex('by_billingAccountId', (q) => q.eq('billingAccountId', paid.billingAccountId)).unique(),
@@ -42,6 +42,7 @@ export const providerBudgetGate = internalQuery({
         ? Number.MAX_SAFE_INTEGER
         : Math.max(0, totalMicros - balance.usedMicros - balance.reservedMicros) / 10_000,
       totalCents: balance.mode === 'unlimited' ? undefined : totalMicros / 10_000,
+      usedCents: balance.usedMicros / 10_000,
       now,
     })
     if (!access.canExecute) return { allowed: false, alreadyCharged }

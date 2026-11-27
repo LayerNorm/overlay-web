@@ -1,8 +1,8 @@
 import { z } from 'zod/v3'
 
-export const onboardingSteps = ['name', 'about', 'team', 'website', 'daily', 'employees', 'connections', 'external', 'memories', 'teammates', 'task', 'complete'] as const
+export const onboardingSteps = ['heard', 'name', 'about', 'team', 'website', 'daily', 'employees', 'connections', 'external', 'memories', 'teammates', 'task', 'subscription', 'complete'] as const
 export type OnboardingStep = typeof onboardingSteps[number]
-export type OnboardingProfile = { name: string; about: string; daily: string; team?: string; website?: string }
+export type OnboardingProfile = { name: string; about: string; daily: string; team?: string; website?: string; heardFrom?: string }
 export type OnboardingEmployee = { name: string; role: string }
 export type OnboardingReply = {
   message: string
@@ -22,7 +22,8 @@ export type OnboardingWorkspaceContext = z.infer<typeof OnboardingWorkspaceConte
 export type OnboardingSession = {
   workspaceContext?: OnboardingWorkspaceContext
   version: 1
-  flowVersion?: 2 | 3
+  /** 4: five questions, an optional subscription, then the first task starts on its own (see ONBOARDING_V4_PLAN). */
+  flowVersion?: 2 | 3 | 4
   member?: boolean
   runId: string
   revision: number
@@ -39,6 +40,10 @@ export type OnboardingSession = {
   createdAgentIds: string[]
   taskId?: string
   taskDraft?: string
+  /** Flow 4: the chief the first task runs with (the personal chief when solo, else Overlay) and its thread. */
+  taskAgentId?: string
+  taskAgentPrincipalId?: string
+  taskConversationId?: string
 }
 export type OnboardingSessionResponse = {
   completed: boolean
@@ -69,6 +74,15 @@ export const OnboardingActionSchema = z.discriminatedUnion('action', [
 export type OnboardingAction = z.infer<typeof OnboardingActionSchema>
 
 export const ONBOARDING_INTRO = "Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving."
+
+export const ONBOARDING_INTRO_V4 = "Hi, I'm Overlay, your AI chief of staff. A few quick questions, then I'll get to work on something for you."
+export const ONBOARDING_HEARD_FROM = ['X', 'LinkedIn', 'A friend or colleague', 'Search', 'YouTube', 'Somewhere else'] as const
+export const ONBOARDING_TEAM_CHOICES = ['Just me', 'With a team'] as const
+
+/** Solo people run their first task with their personal chief; teams (and invited members) with Overlay. */
+export function onboardingSolo(session: Pick<OnboardingSession, 'member' | 'profile'>): boolean {
+  return !session.member && /^(just me|solo|on my own|by myself)[.!]?$/i.test(session.profile.team?.trim() ?? '')
+}
 
 export const ONBOARDING_ROLES = ['Founder or exec', 'Engineering', 'Product', 'Design', 'Marketing & sales', 'Operations'] as const
 export const ONBOARDING_TEAMS = ['Just me', 'A small team', 'A larger company'] as const
@@ -125,8 +139,11 @@ export function extractOnboardingName(raw: string): string {
   return words.map((word) => (word === word.toLowerCase() ? word[0]!.toUpperCase() + word.slice(1) : word)).join(' ').slice(0, 60)
 }
 
-export function preparedOnboardingReply(step: OnboardingStep, profile: OnboardingProfile): OnboardingReply {
+export function preparedOnboardingReply(step: OnboardingStep, profile: OnboardingProfile, flowVersion?: number): OnboardingReply {
+  if (flowVersion === 4) return preparedOnboardingReplyV4(step, profile)
   const messages: Record<OnboardingStep, string> = {
+    heard: 'How did you hear about Overlay?',
+    subscription: 'Want me to run on your own AI subscription?',
     name: 'What should I call you?',
     about: `Nice to meet you, ${profile.name}.\n\nWhat kind of work do you do?`,
     team: 'Who do you work with?',
@@ -147,15 +164,33 @@ export function preparedOnboardingReply(step: OnboardingStep, profile: Onboardin
   }
 }
 
+function preparedOnboardingReplyV4(step: OnboardingStep, profile: OnboardingProfile): OnboardingReply {
+  const messages: Partial<Record<OnboardingStep, string>> = {
+    heard: 'First, how did you hear about Overlay?',
+    name: 'Thanks. What should I call you?',
+    about: `Nice to meet you, ${profile.name}.\n\nWhat kind of work do you do?`,
+    team: 'Will you use Overlay on your own or with a team?',
+    task: "What's one task I can take off your plate? Your first task is on us.",
+    subscription: "Got it. Want me to run on your own AI subscription, like ChatGPT or Claude? It's optional. I can use Overlay models instead.",
+    complete: "I'm on it. I'll work on this in our thread and ask there if I need access to anything.",
+  }
+  return {
+    message: messages[step] ?? preparedOnboardingReply(step, profile).message, mode: 'prepared',
+    ...(step === 'task' ? { suggestions: onboardingTasksFor(profile) } : {}),
+  }
+}
+
 export function onboardingProfileSteps(session: Pick<OnboardingSession, 'flowVersion' | 'member'>): OnboardingStep[] {
+  if (session.flowVersion === 4) return session.member ? ['heard', 'name', 'about'] : ['heard', 'name', 'about', 'team']
   if (session.flowVersion === 3) return session.member ? ['name', 'about', 'daily'] : ['name', 'about', 'team', 'daily']
   return session.flowVersion === 2 && !session.member ? ['name', 'about', 'team', 'website', 'daily'] : ['name', 'about', 'daily']
 }
 
-export function onboardingChoices(session: Pick<OnboardingSession, 'step' | 'suggestions'>): { id: string; label: string }[] {
+export function onboardingChoices(session: Pick<OnboardingSession, 'step' | 'suggestions'> & { flowVersion?: OnboardingSession['flowVersion'] }): { id: string; label: string }[] {
   const choices: Partial<Record<OnboardingStep, readonly string[]>> = {
+    heard: ONBOARDING_HEARD_FROM,
     about: ONBOARDING_ROLES,
-    team: ONBOARDING_TEAMS,
+    team: session.flowVersion === 4 ? ONBOARDING_TEAM_CHOICES : ONBOARDING_TEAMS,
     website: ["I'll add it later", "I don't have one"],
     daily: Object.keys(ONBOARDING_HELP_AREAS),
     task: session.suggestions,

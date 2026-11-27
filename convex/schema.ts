@@ -120,6 +120,9 @@ export default defineSchema({
     paidInvoiceId: v.optional(v.string()),
     cancelAtPeriodEnd: v.optional(v.boolean()),
     providerEventCreatedAt: v.optional(v.number()),
+    /** Overlay-funded trial credit still in the balance's institutional grant; removed when a paid period is funded. */
+    trialGrantMicros: v.optional(v.number()),
+    trialStartedAt: v.optional(v.number()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
