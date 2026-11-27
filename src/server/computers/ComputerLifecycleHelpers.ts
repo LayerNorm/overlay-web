@@ -126,6 +126,8 @@ type ComputerLeaseHandlerDependencies = {
   assertCanRun(input: { workspaceId: string; userId: string; agentId?: string }): Promise<void>
   now(): number
   stop(computer: Computer, actorUserId: string, explicitDelete?: boolean, idle?: boolean): Promise<void>
+  /** Whether a terminal session (a build, render or server) is still running on the machine. */
+  hasRunningTerminalSessions?(computer: Computer): Promise<boolean>
   provision(args: {
     actorUserId: string
     workspaceId: string
@@ -258,5 +260,9 @@ async function idleCleanupOutcome(
   const activeRun = await dependencies.leases.computerHasActiveRuns?.({
     workspaceId: computer.workspaceId, ownerType: computer.ownerType, ownerId: computer.ownerId, now,
   })
-  return activeRun ? { leaseId: lease.id, outcome: 'adopted' as const, reason: 'computer_has_live_run' } : null
+  if (activeRun) return { leaseId: lease.id, outcome: 'adopted' as const, reason: 'computer_has_live_run' }
+  // A long job started with computer_terminal keeps the computer up after the run that started it has ended or
+  // stopped calling tools: stopping would kill the job and lose its output.
+  const terminalRunning = await dependencies.hasRunningTerminalSessions?.(computer).catch((_error) => false)
+  return terminalRunning ? { leaseId: lease.id, outcome: 'adopted' as const, reason: 'computer_terminal_running' } : null
 }

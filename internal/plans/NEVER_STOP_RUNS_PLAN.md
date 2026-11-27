@@ -1,6 +1,8 @@
 # Runs that never stop
 
-Status: proposed, written 2026-11-26; N4 revised the same day to jobs that call back. Nothing built yet.
+Status: in progress. The first slice (N1 for faults inside a model invocation, the N2 sweep as detection, the
+production alarm, the repeated-failure note and the computer staying up for terminal sessions) is built and
+tested; not yet verified in production. Everything else waits for evidence from the alarm.
 
 ## Goal
 
@@ -8,84 +10,61 @@ A run ends only when it finishes or the person cancels it, and pauses only for b
 Timeouts, dropped connections, provider errors, deploys and crashes never end a run. If a provider is down for
 hours, the run waits and resumes on its own.
 
-## Why runs stop today
+## What production showed
 
-- Retries are counted per run (3 interrupted model calls, 2 internal faults), then the run ends with an error.
-- Retries resend the identical request, so a deterministic failure repeats.
-- A model call lives in one workflow step, capped at 800 s by the function limit.
-- Long commands block a step (`computer_exec`, 5 min) or rely on the model polling; the computer idle-stops
-  between tool calls.
-- Nothing resumes a run whose step died without recording a failure.
+Most runs that ended as failed died inside a model invocation from a temporary cause: an Overlay fault, a dropped
+model call, a provider outage or rate limit, or a tool whose outcome was lost. Budget exhaustion also ended runs
+as failed instead of pausing them, and some failures needed the person (a model removed, a rejected request).
+Orphans, runs whose workflow died while they stayed "running", exist but are rare.
+
+## Done (first slice)
+
+- **Temporary faults never end a run.** Model calls that drop, time out or hit an outage retry until they succeed,
+  backing off from 5 s to 5 min (`model-ports.ts`). Faults inside an invocation replay from the last boundary with
+  no limit (`settleInternalFault` in `runner.ts`). A replay after tools had started tells the model which ones may
+  have run, so it checks before repeating them (eve's interrupted-step note).
+- **Same step fails twice:** the replay tells the model to split large output and run long commands in
+  `computer_terminal`.
+- **Alarm:** a run that still ends any other way, and a run on its 5th, 10th… retry, is reported to Sentry
+  (`harness_run_stopped`, `harness_run_retrying`, `src/server/harness/harness-alerts.ts`).
+- **Stalled-run sweep (detection):** every 10 minutes, runs still marked running and quiet for 20 minutes are
+  checked with the Workflow SDK; a run whose workflow ended is reported once (`harness_run_orphaned`,
+  `convex/harness/stalledRuns.ts`, `POST /api/v1/harness/stalled`).
+- **Computer stays up for terminal sessions:** the idle check asks the machine and keeps it running while a
+  session runs (`hasRunningTerminalSessions`).
+- Earlier: subscription and BYOK model streams may be silent for 780 s.
+
+## Next
+
+- **Budget pauses instead of failing**, and a budget limit asks to approve another window (eve).
+- **Needs-input failures pause** with the action to take (reconnect, pick another model) instead of ending.
+- **Errors outside an invocation** (in the workflow's own steps) still end the run; route the temporary ones
+  through the same replay.
+
+## Deferred, with what triggers them
+
+- **Resume orphans automatically.** Needs the runner checkpoint persisted after every step. Trigger: the orphan
+  alert fires more than rarely.
+- **Jobs that call back.** A wrapper on each terminal session posts done, needs-input and a heartbeat to a callback
+  that answers the run's durable wait (`resumeHook`); installed lazily like the desktop driver, and through an
+  Agent Host release on Macs. Trigger: a real long job fails, or agents poll jobs wastefully.
+- **No silent streams.** The subscription bridge passes tool-input deltas through and pings every 15 s. Trigger:
+  stream timeouts in the alarm.
+- **Model calls outside the step limit.** A runner service (Rivet Actors, Cloudflare Durable Objects or a Node
+  service beside the bridge, chosen by a one-day spike). Trigger: model calls hitting 780 s after the
+  repeated-failure note.
+- **Long-run health.** Compaction between turns on a fork, a one-hour prompt cache, a fresh workflow run after
+  compaction. Trigger: runs regularly lasting days.
 
 ## Prior art
 
-- **eve** (Vercel, Workflow SDK like us): cause-chain error classification; retries that change the request; a
-  recovery note after an interrupted step; budget as an approval; step-fault tests. After a failure it waits for
-  the next message.
-- **opencomputer**: the agent loop runs in long-lived processes; no idle timeout on model streams; leases renewed
-  by every stream frame; the computer's idle clock tied to turns.
-
-## Phases
-
-### N1. Failures pause, never end
-
-- One classifier over the cause chain: transient (timeouts, resets, 408/429/5xx, stalls), needs input
-  (reconnect, model removed, approval, a rejected request), budget, cancel.
-- Transient errors retry indefinitely per call, backoff capped at 5 minutes, honouring `Retry-After`. The run
-  shows "Waiting for Claude, retrying" with Stop.
-- Retry counts stop ending runs. Exit: no path marks a run failed except cancel.
-
-### N2. Lease and sweeper (ships with N1)
-
-- Each active step holds a 60 s Convex lease, renewed every 15 s and on stream chunks.
-- A Convex cron finds lapsed leases and stalled runs, settles the step as interrupted and re-enqueues the run.
-- Exit: killing a function mid-step resumes the run within two minutes.
-
-### N3. Retries that change the request
-
-- The same failure twice on one step escalates: lower max output; tell the model to write in parts; compact on
-  overflow; nudge after an empty reply; fall back to another model.
-- An interrupted step re-runs with a note listing which started tool calls completed. Tool calls are keyed by id,
-  so a replay returns the stored result.
-
-### N4. Jobs that call back; the computer follows the run
-
-- A job supervisor on each computer (the Agent Host on a Mac, a process in the cloud image) starts commands
-  detached and returns a job id at once. `computer_exec` becomes a job once it runs past 60 s.
-- The computer calls back with a one-time job token: done (exit code, output tail, log path), needs input (an
-  `overlay ask` command or an agent CLI's permission hook), or progress. The endpoint writes the reply to Convex
-  and calls `resumeHook`, reusing the harness's durable waits; repeats are ignored by job id.
-- The agent keeps working; with nothing left, the run parks on the job's wait, using no compute.
-- Backstop: a heartbeat every minute. If it stops, the job is marked lost and the run wakes, replacing the
-  computer if it died. A long-silent job shows as "looks stuck".
-- The computer stays up while a turn is open, a job runs or a message is queued, and snapshots its disk when it
-  idle-stops.
-
-### N5. No silent streams
-
-- The subscription bridge passes tool-input deltas through instead of buffering, and sends an SSE comment every
-  15 s.
-- Transports bound connecting and headers only; 10 minutes of silence is a retryable stall.
-
-### N6. Model calls outside the step limit
-
-- A runner interface (start, wait, cancel), first with an inline implementation.
-- A one-day spike on Rivet Actors, Cloudflare Durable Objects and a Node service beside the bridge: a 20-minute
-  stream, killed and redeployed mid-way, must complete with the reply written once.
-- The winner streams chunks to Convex and fires a workflow hook when done. Model calls only; subscription and BYOK
-  first.
-
-### N7. Long-run health
-
-- Hitting a budget limit asks to approve another window.
-- Compaction between turns on a fork, a one-hour prompt cache, and a fresh workflow run after compaction.
+- **eve** (Vercel): cause-chain classification, retries that change the request, the interrupted-step note,
+  budget as an approval, step-fault tests.
+- **opencomputer**: long-lived agent loops, no stream idle timeout, leases with an alarm, the computer's idle
+  clock tied to turns.
 
 ## Proof
 
-- CI fault injection at every step boundary (lost completion, killed function, deploy, dropped stream, long
-  silence, 429/503, lost job callback): every run must end done, cancelled or paused.
-- A production alarm on any other ending, each hit fixed the same day.
-
-## Order
-
-N1 with N2, then N3, N4, N5 and N6. N7 can run alongside.
+- Tests cover unlimited retries and replays, the notes, the alerts, the sweep and the terminal idle check.
+- The alarm is the ongoing proof: every `harness_run_stopped` or `harness_run_orphaned` event is a bug, fixed the
+  same day. Grow the fault-injection tests from each new cause.
