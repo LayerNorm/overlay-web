@@ -1,0 +1,23 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@/shared/*": ["../src/shared/*"],
+      "@overlay/api-client": ["../packages/overlay-api-client/src/index.ts"],
+      "@overlay/api-client/*": ["../packages/overlay-api-client/src/*"],
+      "@overlay/app-core": ["../packages/overlay-app-core/src/index.ts"],
+      "@overlay/app-core/*": ["../packages/overlay-app-core/src/*"],
+      "@overlay/chat-core": ["../packages/overlay-chat-core/src/index.ts"],
+      "@overlay/chat-core/*": ["../packages/overlay-chat-core/src/*"],
+      "react": [
+        "../node_modules/@types/react/index.d.ts",
+        "./node_modules/@types/react/index.d.ts"
+      ],
+      "react/*": [
+        "../node_modules/@types/react/*",
+        "./node_modules/@types/react/*"
+      ]
+    }
+  }
+}

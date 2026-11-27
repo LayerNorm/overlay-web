@@ -1,0 +1,50 @@
+import React, { useEffect } from 'react'
+import { useRouter } from 'expo-router'
+import { useAuth } from '../contexts/AuthContext'
+import { loadMobilePreferences, type StartDestination } from '../services/mobilePreferencesService'
+import { useWorkspace } from '../contexts/WorkspaceContext'
+import { needsOnboarding } from '../services/onboardingService'
+
+function destinationPath(
+  destination: StartDestination,
+): '/(tabs)/chats' | '/(tabs)/agents' | '/(tabs)/files' | '/(tabs)/work' {
+  if (destination === 'agents') return '/(tabs)/agents'
+  if (destination === 'work') return '/(tabs)/work'
+  if (destination === 'files') return '/(tabs)/files'
+  return '/(tabs)/chats'
+}
+
+export default function AppEntryScreen(): React.ReactElement | null {
+  const router = useRouter()
+  const { isAuthenticated, isLoading, user } = useAuth()
+  const { isLoading: workspaceLoading, workspaces, error } = useWorkspace()
+
+  useEffect(() => {
+    if (isLoading) {
+      return
+    }
+
+    if (!isAuthenticated || !user?.id) {
+      router.replace('/auth-flow?mode=sign-in&force=true')
+      return
+    }
+
+    if (workspaceLoading || error || !workspaces.length) return
+    let cancelled = false
+    void Promise.all([loadMobilePreferences(), needsOnboarding(user.id)]).then(([preferences, onboard]) => {
+      if (cancelled) return
+      if (onboard) {
+        router.replace('/onboarding')
+        return
+      }
+      router.replace(destinationPath(preferences.startDestination))
+      // Voice is a full-screen tool, not a tab: open it above Chats.
+      if (preferences.startDestination === 'voice') router.push('/voice')
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthenticated, isLoading, router, user?.id, workspaceLoading, workspaces.length, error])
+
+  return null
+}

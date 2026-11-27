@@ -1,0 +1,26 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true,
+    "skipLibCheck": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/shared/*": ["../src/shared/*"],
+      "@overlay/api-client": ["../packages/overlay-api-client/src/index.ts"],
+      "@overlay/api-client/*": ["../packages/overlay-api-client/src/*"],
+      "@overlay/app-core": ["../packages/overlay-app-core/src/index.ts"],
+      "@overlay/app-core/*": ["../packages/overlay-app-core/src/*"],
+      "@overlay/chat-core": ["../packages/overlay-chat-core/src/index.ts"],
+      "@overlay/chat-core/*": ["../packages/overlay-chat-core/src/*"]
+    }
+  },
+  "exclude": [
+    "node_modules",
+    "babel.config.js",
+    "metro.config.js",
+    "jest.config.js",
+    "android",
+    "ios",
+    "dist"
+  ]
+}
