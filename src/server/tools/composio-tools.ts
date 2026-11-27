@@ -1,8 +1,6 @@
 import 'server-only'
 
 import { logger } from '@/server/observability/logger'
-import path from 'node:path'
-import { pathToFileURL } from 'node:url'
 import type { ToolSet } from 'ai'
 import { getServerProviderKey } from '@/server/ai/provider-keys'
 
@@ -93,37 +91,14 @@ async function loadComposioModules(): Promise<{
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   VercelProvider: any
 }> {
-  try {
-    const [coreModule, vercelModule] = await Promise.all([
-      import('@composio/core'),
-      import('@composio/vercel'),
-    ])
+  const [coreModule, vercelModule] = await Promise.all([
+    import('@composio/core'),
+    import('@composio/vercel'),
+  ])
 
-    return {
-      Composio: coreModule.Composio,
-      VercelProvider: vercelModule.VercelProvider,
-    }
-  } catch (_error) {
-    const coreUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/core/dist/index.mjs')
-    ).href
-    const vercelUrl = pathToFileURL(
-      path.resolve(process.cwd(), '../overlay-desktop/node_modules/@composio/vercel/dist/index.mjs')
-    ).href
-
-    try {
-      const coreModule = await import(/* webpackIgnore: true */ coreUrl)
-      const vercelModule = await import(/* webpackIgnore: true */ vercelUrl)
-
-      return {
-        Composio: coreModule.Composio,
-        VercelProvider: vercelModule.VercelProvider,
-      }
-    } catch (error) {
-      throw new Error(
-        `Composio packages are unavailable for overlay-landing: ${error instanceof Error ? error.message : String(error)}`
-      )
-    }
+  return {
+    Composio: coreModule.Composio,
+    VercelProvider: vercelModule.VercelProvider,
   }
 }
 

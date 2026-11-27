@@ -14,7 +14,7 @@ test('paid and Computer fixtures compose once and unknown fixtures fail before d
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
   OVERLAY_DEPLOYMENT_ENV: 'preview', VERCEL_GIT_PULL_REQUEST_ID: '123',
-  VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web',
+  VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay', VERCEL_GIT_REPO_ID: '1133644268',
   NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.overlay.works',
   CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key',
 }
@@ -85,7 +85,7 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
     { NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io' },
     { VERCEL_GIT_PULL_REQUEST_ID: '' },
     { OVERLAY_DEPLOYMENT_ENV: 'staging' },
-    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_SLUG: 'fork' },
+    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_ID: '42' },
   ]) assert.throws(() => buildPlan({ ...preview, ...patch }))
 })
 
@@ -165,8 +165,8 @@ test('billing previews provision their test endpoint after runtime settings and 
 test('Git first-push lookup accepts only the exact open internal main PR', async () => {
   const env = { ...preview, VERCEL_GIT_PULL_REQUEST_ID: '', VERCEL_GIT_COMMIT_REF: 'codex/probe',
     VERCEL_GIT_COMMIT_SHA: 'a'.repeat(40) }
-  const pr = { number: 219, state: 'open', base: { ref: 'main', repo: { full_name: 'LayerNorm/overlay-web' } },
-    head: { ref: 'codex/probe', sha: 'a'.repeat(40), repo: { full_name: 'LayerNorm/overlay-web' } } }
+  const pr = { number: 219, state: 'open', base: { ref: 'main', repo: { full_name: 'LayerNorm/overlay' } },
+    head: { ref: 'codex/probe', sha: 'a'.repeat(40), repo: { full_name: 'LayerNorm/overlay' } } }
   let time = 0, calls = 0
   const resolved = await previewBuildEnvironment(env, { now: () => time, sleep: async ms => { time += ms },
     fetchImpl: async (url, options) => {

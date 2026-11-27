@@ -37,6 +37,6 @@ Not to be confused with generic "overlay" UI software or other products that use
 - Pricing: https://overlay.works/pricing
 - Docs: https://overlay.works/docs
 - Self-hosting: https://overlay.works/self-hosting
-- Source: https://github.com/LayerNorm/overlay-web
+- Source: https://github.com/LayerNorm/overlay
 - X: https://x.com/overlayworks
 - Company: LayerNorm Inc, founded by Divyansh Lalwani

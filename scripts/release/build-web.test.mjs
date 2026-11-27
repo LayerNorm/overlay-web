@@ -6,7 +6,7 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 
 test('auth settings are installed on only the claimed PR backend before build/upload', () => {
   const env = { OVERLAY_RELEASE_LANE: 'preview', VERCEL_ENV: 'preview', OVERLAY_DEPLOYMENT_ENV: 'preview',
-    VERCEL_GIT_PULL_REQUEST_ID: '123', VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay-web',
+    VERCEL_GIT_PULL_REQUEST_ID: '123', VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay', VERCEL_GIT_REPO_ID: '1133644268',
     NEXT_PUBLIC_CONVEX_URL: 'https://fixture.convex.cloud', WORKOS_CLIENT_ID: 'client_fixture',
     CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key' }
   for (const fail of [false, true]) {

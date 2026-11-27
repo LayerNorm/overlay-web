@@ -37,7 +37,7 @@ const OVERLAY_SOURCES: CompareSource[] = [
   { label: 'Overlay pricing', href: 'https://overlay.works/pricing' },
   { label: 'Overlay plans and credit', href: 'https://overlay.works/docs/help/billing' },
   { label: 'Overlay agent tools', href: 'https://overlay.works/docs/help/tools' },
-  { label: 'Overlay source code (AGPL-3.0)', href: 'https://github.com/LayerNorm/overlay-web' },
+  { label: 'Overlay source code (AGPL-3.0)', href: 'https://github.com/LayerNorm/overlay' },
 ]
 
 const DEVIN_SOURCES: CompareSource[] = [

@@ -39,4 +39,4 @@ card.
 
 ## Source
 
-- [GitHub](https://github.com/LayerNorm/overlay-web): source code (AGPL-3.0)
+- [GitHub](https://github.com/LayerNorm/overlay): source code (AGPL-3.0)

@@ -56,7 +56,7 @@ lifecycle email and static metadata; custom white-label overrides are unchanged.
 ## Help and bug reports
 
 Help opens on click (not hover), with Docs and Submit a bug. The authenticated,
-same-origin bug-report routes create issues in the public `LayerNorm/overlay-web`
+same-origin bug-report routes create issues in the public `LayerNorm/overlay`
 repository and notify the owner using the configured Resend provider. Set these
 server-only environment variables before enabling submission:
 

@@ -25,6 +25,12 @@ paths = [
 ]
 
 [[allowlists]]
+description = "Mobile transcript tests intentionally contain fake bearer and JWT values to verify they never reach the transcript"
+paths = [
+  '''apps/mobile/scripts/native-chat-screen-integration\.test\.cjs$''',
+]
+
+[[allowlists]]
 description = "Generated mockup bundles: minified production code built by internal/plans/mockups/overlay-app/build.mjs"
 paths = [
   '''internal/plans/mockups/(overlay-app|local-cloud-continuity|files-on-computers|thread-folders)\.html$''',
