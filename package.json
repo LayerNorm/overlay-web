@@ -186,7 +186,7 @@
     "@composio/core": "^0.11.0",
     "@composio/vercel": "^0.11.1",
     "@convex-dev/stripe": "^0.1.3",
-    "@modelcontextprotocol/sdk": "1.32.1",
+    "@modelcontextprotocol/sdk": "1.32.2",
     "@noble/hashes": "2.2.0",
     "@opencoredev/email-sdk": "1.2.0",
     "@openrouter/ai-sdk-provider": "^3.0.0",
