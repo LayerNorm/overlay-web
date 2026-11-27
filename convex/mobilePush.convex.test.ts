@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from 'vitest'
 import { convexTest } from 'convex-test'
 import { makeFunctionReference } from 'convex/server'
 import schema from './schema'
-import { insertPushNotification, } from './lib/mobilePush'
+import { insertPushNotification } from './lib/mobilePush'
 
 const modules = import.meta.glob('./**/*.ts')
 const register = makeFunctionReference<'mutation'>('notifications/tokens:register')
@@ -312,4 +312,21 @@ test('notification creation atomically queues delivery and transport errors do n
   await t.action(deliver, { source })
   expect((await t.query(pending, { source })).targets).toHaveLength(0)
   await expect(t.action(deliver, { source })).resolves.toBeNull()
+})
+
+test('no delivery is scheduled until some device has registered for push', async () => {
+  const t = convexTest(schema, modules)
+  const scheduled = await t.run(async (ctx) => {
+    const room = await ctx.db.insert('conversations', {
+      userId: 'alice', workspaceId: 'ws', title: 'Room', lastModified: 1, createdAt: 1, updatedAt: 1,
+      lastMode: 'act', askModelIds: ['model'], actModelId: 'model', conversationType: 'dm',
+    })
+    await insertPushNotification(ctx, {
+      notificationId: 'no-devices', workspaceId: 'ws', recipientPrincipalId: 'p', conversationId: room,
+      actorPrincipalId: 'other', type: 'reaction', title: 'Reaction', createdAt: 1,
+    })
+    return await ctx.db.system.query('_scheduled_functions').collect()
+  })
+  expect(scheduled.some((row) => row.name === 'notifications/push:deliver')).toBe(false)
+  expect(await t.run((ctx) => ctx.db.query('workspaceNotifications').collect())).toHaveLength(1)
 })

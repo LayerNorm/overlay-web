@@ -10,6 +10,9 @@ export async function schedulePush(
   ctx: Pick<MutationCtx, 'db' | 'scheduler'>,
   source: PushSource,
 ): Promise<void> {
+  // Until a device has registered for server push there is nothing to deliver to, so
+  // skip the action instead of running one per notification for no recipient.
+  if (!(await ctx.db.query('pushTokens').first())) return
   await ctx.scheduler.runAfter(0, internal.notifications.push.deliver, { source })
 }
 
