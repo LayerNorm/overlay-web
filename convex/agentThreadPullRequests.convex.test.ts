@@ -71,7 +71,7 @@ test('server-authorized agent tool output appears only in the caller-owned threa
         state: 'input-available',
         toolInput: {
           toolName: 'GITHUB_CREATE_A_PULL_REQUEST',
-          arguments: { owner: 'LayerNorm', repo: 'overlay-web' },
+          arguments: { owner: 'LayerNorm', repo: 'overlay' },
         },
       },
     }],
@@ -108,7 +108,7 @@ test('server-authorized agent tool output appears only in the caller-owned threa
   expect(aliceBundle.threads.find(thread => thread.conversationId === aliceConversationId)?.pullRequests)
     .toMatchObject([{
       owner: 'LayerNorm',
-      repo: 'overlay-web',
+      repo: 'overlay',
       number: 42,
       title: 'Backend PR association',
       url: 'https://github.com/LayerNorm/overlay/pull/42',

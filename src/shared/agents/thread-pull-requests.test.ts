@@ -37,14 +37,14 @@ function toolPart(
 
 test('extracts lifecycle states and deduplicates repository names case-insensitively', () => {
   const parts = [
-    toolPart('create-open', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(1, 'LayerNorm', 'overlay-web')),
+    toolPart('create-open', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(1, 'LayerNorm', 'overlay')),
     toolPart('create-draft', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(2, 'acme', 'draft', 'open', { draft: true })),
     toolPart('close', 'GITHUB_CLOSE_A_PULL_REQUEST', { owner: 'acme', repo: 'closed', pull_number: 3 },
       pullRequest(3, 'acme', 'closed', 'closed')),
     toolPart('merge', 'GITHUB_MERGE_A_PULL_REQUEST', { owner: 'acme', repo: 'merged', pull_number: 4 },
       pullRequest(4, 'acme', 'merged', 'closed', { merged: true })),
-    toolPart('update-open', 'GITHUB_UPDATE_A_PULL_REQUEST', { owner: 'layernorm', repo: 'OVERLAY-WEB' },
-      pullRequest(1, 'layernorm', 'OVERLAY-WEB', 'open', {
+    toolPart('update-open', 'GITHUB_UPDATE_A_PULL_REQUEST', { owner: 'layernorm', repo: 'OVERLAY' },
+      pullRequest(1, 'layernorm', 'OVERLAY', 'open', {
         title: 'Updated title',
         updated_at: '2026-10-20T13:00:00Z',
       })),
@@ -246,13 +246,13 @@ test('ignores failed calls, prose, noncanonical URLs, and lookalike tool names',
 test('uses authoritative merge input when the successful response only says merged', () => {
   const merge = toolPart('merge-minimal', 'GITHUB_MERGE_A_PULL_REQUEST', {
     owner: 'LayerNorm',
-    repo: 'overlay-web',
+    repo: 'overlay',
     pull_number: 51,
   }, { merged: true })
   const association = reduceThreadPullRequests(undefined, [], [merge], 100)?.[0]
   assert.deepEqual(association, {
     owner: 'LayerNorm',
-    repo: 'overlay-web',
+    repo: 'overlay',
     number: 51,
     title: 'Pull request #51',
     url: 'https://github.com/LayerNorm/overlay/pull/51',
@@ -260,7 +260,7 @@ test('uses authoritative merge input when the successful response only says merg
     observedAt: 100,
   })
 
-  const create = toolPart('create-before-merge', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(51, 'LayerNorm', 'overlay-web'))
+  const create = toolPart('create-before-merge', 'GITHUB_CREATE_A_PULL_REQUEST', {}, pullRequest(51, 'LayerNorm', 'overlay'))
   const existing = reduceThreadPullRequests(undefined, [], [create], 50)!
   const withExistingTitle = reduceThreadPullRequests(existing, [create], [create, merge], 100)
   assert.equal(withExistingTitle?.[0]?.title, 'Pull request 51')

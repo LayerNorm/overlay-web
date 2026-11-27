@@ -145,7 +145,7 @@ test('a link chip shows a short label and sends the raw address', () => {
   const href = 'https://www.github.com/LayerNorm/overlay/pull/548?diff=split#files'
   const chip = createLinkChip(href) as unknown as FakeElement
   assert.equal(chip.getAttribute(LINK_CHIP_ATTR), href)
-  assert.equal(chip.textContent, 'github.com/LayerNorm/overlay/…')
+  assert.equal(chip.textContent, 'github.com/LayerNorm/overlay/pull…')
   assert.equal(composerLinkLabel('https://example.com/'), 'example.com')
   assert.equal(serialise(text('see '), chip, text(' now')), `see ${href} now`)
 })
