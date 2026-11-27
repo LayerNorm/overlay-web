@@ -14,7 +14,7 @@ test('paid and Computer fixtures compose once and unknown fixtures fail before d
 const preview = {
   OVERLAY_RELEASE_LANE: 'staging', VERCEL_ENV: 'preview',
   OVERLAY_DEPLOYMENT_ENV: 'preview', VERCEL_GIT_PULL_REQUEST_ID: '123',
-  VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay',
+  VERCEL_GIT_REPO_OWNER: 'LayerNorm', VERCEL_GIT_REPO_SLUG: 'overlay', VERCEL_GIT_REPO_ID: '1133644268',
   NEXT_PUBLIC_APP_URL: 'https://pr-123.preview.overlay.works',
   CONVEX_DEPLOY_KEY: 'preview:team:project|fixture-key',
 }
@@ -85,7 +85,7 @@ test('a preview cannot deploy with a production key, shared origin, or missing P
     { NEXT_PUBLIC_APP_URL: 'https://staging.getoverlay.io' },
     { VERCEL_GIT_PULL_REQUEST_ID: '' },
     { OVERLAY_DEPLOYMENT_ENV: 'staging' },
-    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_SLUG: 'fork' },
+    { VERCEL_GIT_REPO_OWNER: 'outside' }, { VERCEL_GIT_REPO_ID: '42' },
   ]) assert.throws(() => buildPlan({ ...preview, ...patch }))
 })
 

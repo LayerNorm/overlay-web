@@ -14,11 +14,14 @@ export function previewQaFixtures(value = '') {
   return fixtures
 }
 
+// The repository's numeric ID survives renames; its name does not.
+const OVERLAY_REPOSITORY_ID = '1133644268'
+
 /** A Git push can start building before the draft PR is opened. */
 export async function previewBuildEnvironment(env, { fetchImpl = fetch,
   sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), now = Date.now } = {}) {
   if (env.VERCEL_ENV !== 'preview' || /^[1-9]\d*$/.test(env.VERCEL_GIT_PULL_REQUEST_ID ?? '')) return env
-  if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_SLUG !== 'overlay'
+  if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_ID !== OVERLAY_REPOSITORY_ID
     || !env.VERCEL_GIT_COMMIT_REF || !/^[a-f0-9]{40}$/.test(env.VERCEL_GIT_COMMIT_SHA ?? '')) {
     throw new Error('Missing trusted Git metadata for PR lookup')
   }
@@ -69,7 +72,7 @@ export function buildPlan(env) {
   delete childEnv.NEXT_PUBLIC_DEV_CONVEX_URL
 
   if (env.VERCEL_ENV === 'preview') {
-    if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_SLUG !== 'overlay') {
+    if (env.VERCEL_GIT_REPO_OWNER !== 'LayerNorm' || env.VERCEL_GIT_REPO_ID !== OVERLAY_REPOSITORY_ID) {
       throw new Error('Preview source must be the internal Overlay repository')
     }
     const pr = env.VERCEL_GIT_PULL_REQUEST_ID

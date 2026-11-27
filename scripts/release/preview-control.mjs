@@ -208,7 +208,7 @@ export class PreviewController {
   async verifyProject() {
     const p = await this.vercel(this.projectPath)
     if (p.id !== CONFIG.projectId || p.name !== CONFIG.projectName || p.link?.type !== 'github'
-      || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm' || p.link.repo !== 'overlay') {
+      || Number(p.link.repoId) !== CONFIG.repositoryId || p.link.org !== 'LayerNorm') {
       throw new Error('Preview project repository identity mismatch')
     }
     const wildcard = await this.vercel(`${this.projectPath}/domains/${segment(CONFIG.previewWildcardDomain)}`)
