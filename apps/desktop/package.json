@@ -45,7 +45,7 @@
   "dependencies": {
     "@overlay/desktop-bridge": "file:../../packages/overlay-desktop-bridge",
     "@sentry/electron": "7.15.0",
-    "axios": "1.21.0",
+    "axios": "1.21.1",
     "dotenv": "^17.2.3",
     "electron-updater": "^6.3.9",
     "uiohook-napi": "^1.5.4",
