@@ -1,7 +1,7 @@
 # Desktop onboarding: setting Overlay up on this computer
 
-Status: Mockup approved (2026-11-26). Phases 1–3 built in one PR (web) and on desktop branch `desktop-onboarding`;
-not yet merged, released or accepted. Phase 4 not started. Mockup: `internal/plans/mockups/desktop-onboarding.html`.
+Status: Phases 1–3 merged (PR 638) and live on overlay.works since 2026-11-27 (`434a46f`); the desktop side shipped in
+Overlay Desktop 0.6.0. Settings → Import and Phase 4 are not built. Not yet accepted in the released app by a real new account. Mockup: `internal/plans/mockups/desktop-onboarding.html`.
 
 Related: `internal/plans/LOCAL_PRIVATE_THREADS_PLAN.md` (private threads, model keys, free tier),
 `internal/develop/private-threads.md`, `internal/develop/local-computer.md`,
@@ -131,9 +131,9 @@ person did not tick. Settings → Import (desktop only) runs the same scan again
 | Phase | Scope | State |
 | --- | --- | --- |
 | 0: Mockup and decisions | This plan and `mockups/desktop-onboarding.html` | Done: mockup approved 2026-11-26 |
-| 1: Gate and core screens | `desktopSetup` status, screens 1, 2 and 6, handoff to the conversation at `daily` | Built; not merged or accepted |
-| 2: This computer and models | Screens 4 and 5 with existing enrollment and key storage; environment keys | Built; not merged or released |
-| 3: Bring your setup | Scanners, `localSetup` bridge, import of instructions, skills, subagents and remote MCP servers; Settings → Import | Built except Settings → Import; not merged or released |
+| 1: Gate and core screens | `desktopSetup` status, screens 1, 2 and 6, handoff to the conversation at `daily` | Released (web 2026-11-27, Desktop 0.6.0); not accepted |
+| 2: This computer and models | Screens 4 and 5 with existing enrollment and key storage; environment keys | Released (Desktop 0.6.0); not accepted |
+| 3: Bring your setup | Scanners, `localSetup` bridge, import of instructions, skills, subagents and remote MCP servers; Settings → Import | Released (Desktop 0.6.0) except Settings → Import, which is not built; not accepted |
 | 4: Local servers and subscriptions | Local (command) MCP servers in private threads through the Agent Host; Claude and ChatGPT plans (private threads Phase 4) | Not started |
 
 ## Acceptance
