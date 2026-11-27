@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { ArrowRight, Check, Download } from 'lucide-react'
 import { Button, DialogFrame } from '@overlay/ui/primitives'
 import type { WorkspaceBillingSummaryResponse } from '@overlay/workspace-contracts'
@@ -21,6 +22,7 @@ export function OnboardingPlanChoice({ open, workspaceId, summary, reason, onClo
   reason: 'first_task' | 'paid_feature'
   onClose(): void
 }) {
+  const router = useRouter()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => { if (open) trackOnboarding('onboarding_plan_shown', { reason }) }, [open, reason])
@@ -32,7 +34,7 @@ export function OnboardingPlanChoice({ open, workspaceId, summary, reason, onClo
   const choosePaid = async () => {
     if (busy) return
     trackOnboarding('onboarding_plan_chosen', { plan: 'usage', reason })
-    if (!summary.canManage) { window.location.assign(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`); return }
+    if (!summary.canManage) { onClose(); router.push(`/app/w/${encodeURIComponent(workspaceId)}/settings?section=workspace&workspace_tab=billing`); return }
     setBusy(true); setError(null)
     try {
       if (!summary.initialized) await overlayAppClient.workspaces.initializeBilling(workspaceId)

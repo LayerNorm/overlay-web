@@ -43,11 +43,9 @@ export function OnboardingChecklist({ workspaceId, expanded, buildHref, navigate
     writeChecklist(workspaceId, next)
     setState(next)
   }, [workspaceId])
-  useEffect(() => {
-    if (subscribed && state && !state.done.includes('subscription')) update((current) => ({ ...current, done: [...current.done, 'subscription'] }))
-  }, [subscribed, state, update])
   if (!workspaceId || !state || !visible) return null
-  const done = new Set<ChecklistItemId>(state.done)
+  // A connected subscription counts as done without being clicked.
+  const done = new Set<ChecklistItemId>([...state.done, ...(subscribed ? ['subscription' as const] : [])])
   const progress = done.size / CHECKLIST_ITEMS.length
   const showTooltip = !state.tooltipSeen && !open
   const openItem = (id: ChecklistItemId, href: string | null) => {
@@ -63,11 +61,11 @@ export function OnboardingChecklist({ workspaceId, expanded, buildHref, navigate
         if (next) { trackOnboarding('onboarding_checklist_opened', { done: done.size }); if (!state.tooltipSeen) update((current) => ({ ...current, tooltipSeen: true })) }
       }}>
         <PopoverTrigger asChild>
-          <button type="button" aria-label={`Get started, ${done.size} of ${CHECKLIST_ITEMS.length} done`}
-            className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] hover:bg-(--surface-elevated)">
+          <Button variant="ghost" size="sm" aria-label={`Get started, ${done.size} of ${CHECKLIST_ITEMS.length} done`}
+            className="h-auto w-full justify-start gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] font-normal">
             <ProgressRing value={progress} />
             {expanded ? <><span className="flex-1">Get started</span><span className="text-xs text-muted-foreground">{done.size}/{CHECKLIST_ITEMS.length}</span></> : null}
-          </button>
+          </Button>
         </PopoverTrigger>
         <PopoverContent side="right" align="end" className="w-72 p-2">
           <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
@@ -76,13 +74,13 @@ export function OnboardingChecklist({ workspaceId, expanded, buildHref, navigate
           </div>
           <ul>
             {CHECKLIST_ITEMS.map((item) => <li key={item.id}>
-              <button type="button" disabled={!item.href && done.has(item.id)} onClick={() => openItem(item.id, item.href)}
-                className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] hover:bg-(--surface-elevated) disabled:cursor-default">
+              <Button variant="ghost" size="sm" disabled={!item.href && done.has(item.id)} onClick={() => openItem(item.id, item.href)}
+                className="h-auto w-full justify-start gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] font-normal disabled:opacity-100">
                 <span className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${done.has(item.id) ? 'border-transparent bg-(--foreground) text-(--background)' : 'border-(--border)'}`}>
                   {done.has(item.id) ? <Check size={10} strokeWidth={3} /> : null}
                 </span>
                 <span className={done.has(item.id) ? 'text-muted-foreground line-through' : ''}>{item.label}</span>
-              </button>
+              </Button>
             </li>)}
           </ul>
         </PopoverContent>
