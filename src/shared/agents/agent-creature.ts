@@ -24,6 +24,13 @@ function luminance({ r, g, b }: RGB): number {
   return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
 }
 
+/** Dark eyes on light bodies, near-white eyes on dark bodies. */
+export function creatureEyeColor(bodyColor: string): string {
+  const rgb = hexToRgb(bodyColor)
+  if (!rgb) return '#1c1917'
+  return luminance(rgb) > 0.5 ? '#1c1917' : '#fafaf9'
+}
+
 function toHex({ r, g, b }: RGB): string {
   const byte = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')
   return `#${byte(r)}${byte(g)}${byte(b)}`
