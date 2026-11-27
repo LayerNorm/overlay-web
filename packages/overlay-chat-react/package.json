@@ -37,7 +37,7 @@
     "@overlay/ui": "file:../overlay-ui",
     "@streamdown/math": "^1.0.3",
     "dompurify": "^3.4.17",
-    "katex": "^0.16.11",
+    "katex": "^0.19.1",
     "lucide-react": "^0.575.0",
     "mermaid": "^12.3.0",
     "react-markdown": "^10.1.0",
