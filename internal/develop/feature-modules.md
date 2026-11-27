@@ -13,7 +13,7 @@ Feature modules should keep behavior reusable without coupling presentational UI
 - `src/features/<domain>/*`: web containers and feature-local helpers that bind routing, auth, Convex-backed APIs, uploads, billing, and local browser APIs.
 - `src/components/{ui,layout,providers}/*`: shared UI primitives, app chrome, and runtime providers.
 
-Presentational components must accept data and callbacks only. They must not import `fetch`, `next/navigation`, auth contexts, Convex, or `overlayAppClient`. Run `npm run check:module-boundaries` before committing module package changes.
+Presentational components must accept data and callbacks only. They must not import `fetch`, `next/navigation`, auth contexts, Convex, or `overlayAppClient`. Run `bun run check:module-boundaries` before committing module package changes.
 
 ## Module Checklist
 

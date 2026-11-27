@@ -152,7 +152,7 @@ timings. This complements, rather than replaces, the query-ready measurement.
 Before any endpoint deletion, search every call site again, including desktop,
 mobile, agents, scheduled execution and public SDK consumers.
 
-`npm run check:native-architecture` (CI) enforces this inventory from the browser side. Every browser
+`bun run check:native-architecture` (CI) enforces this inventory from the browser side. Every browser
 `overlayAppClient.<resource>.<method>` call is listed in `scripts/baselines/browser-http-calls.json`. A new
 browser HTTP call fails until it is native or added on purpose with its server reason in the PR (model runs,
 stop/approval/input, billing, OAuth, email, validated or audited writes, provider calls, file bytes), and a
@@ -428,7 +428,7 @@ workspace chats and rooms, and it unmounts the chat surface until it finishes.
 ```bash
 node --test scripts/qa/realtime-baseline.test.mjs
 npx eslint scripts/qa/realtime-baseline.mjs scripts/qa/realtime-baseline.test.mjs scripts/qa/personal-chat-realtime.mjs src/features/chat/lib/realtime-baseline.ts src/features/chat/components/chat/useLiveConversationSync.ts
-npm run typecheck
+bun run typecheck
 ```
 
 Unit tests validate timing semantics, privacy-safe failures, origin guards and

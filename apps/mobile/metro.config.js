@@ -79,9 +79,11 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
     ? defaultResolveRequest(context, moduleName, platform)
     : context.resolveRequest(context, moduleName, platform)
   if (platform === 'web') {
+    // The shared Markdown DOM bundle lazy-loads Shiki chunks as ./node_modules/...;
+    // mobile declares those packages, so they resolve from its own node_modules.
     const lazyModule = resolveWorkspaceLazyModule(
       moduleName,
-      workspaceRoot,
+      projectRoot,
       resolveNormally,
       (workspacePath) => context.resolveRequest(context, workspacePath, platform),
     )

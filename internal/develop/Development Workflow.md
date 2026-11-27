@@ -150,7 +150,7 @@ When the work implements a phase or card of a plan in `internal/plans/`, update 
 
 Package render tests preload the shared Node stylesheet and JSX shims, matching ordinary CI rendering; run the package's own test command when adding render coverage.
 
-Run the smallest checks that cover the change. Use `npm run dev` for local web work with your engineer-owned dev backend. Run a smoke check of the affected route or behavior before pushing. Record the actual commands and results. Required repository CI remains mandatory.
+Run the smallest checks that cover the change. Use `bun run dev` for local web work with your engineer-owned dev backend. Run a smoke check of the affected route or behavior before pushing. Record the actual commands and results. Required repository CI remains mandatory.
 
 Match QA to risk: visual changes need rendered UI checks; auth, billing, tenant boundaries, migrations, and backend changes need their relevant stronger checks. Read the installed Next.js guides before writing Next.js code.
 
@@ -475,18 +475,20 @@ Configuration and Convex boundary checks that depend on generated Workflow route
 stay after compilation. Gateway tests retain their react-server condition in a
 dedicated discovered group; route and gateway suites run once through the shards.
 
-CI defaults to GitHub's scoped installed-dependency cache, keyed by OS/architecture,
-resolved Node version, pinned npm, lockfile, workspace manifests and install policy.
-No restore prefix may substitute a different tree. Misses run
-`npm ci --ignore-scripts --no-audit --no-fund`; all checks still execute after a
-hit. GitHub prevents PR cache writes from replacing main's trees. Docs uses the
-same root install; admin keeps its isolated workspace installation.
+CI installs every workflow through `.github/actions/ci-dependencies`: pinned
+Node.js, Bun from `packageManager`, and GitHub's scoped cache of Bun's downloads
+(`~/.bun/install/cache`), keyed by OS/architecture, Bun version, `bun.lock` and
+`bunfig.toml`, with a same-Bun-version restore prefix. Every run then installs with
+`bun install --frozen-lockfile --ignore-scripts`, which links from that cache in
+seconds and fails if `package.json` and `bun.lock` disagree. GitHub prevents PR
+cache writes from replacing main's. Signed desktop releases install without a
+restored cache.
 
 The repository's Actions cache is capped at 10 GB and was full, so writes are
 limited to the ones another run can read. The composite action pins exact Node
 patch versions (bump them together in `ci-dependencies/action.yml`): a floating
 major resolved to different patches on different runner images, so PRs missed
-main's tree and saved ~800 MB copies that evicted it. Merge-queue runs never save
+main's cache and saved large copies that evicted it. Merge-queue runs never save
 dependencies, and only pushes to main save `.next/cache`; every run still
 restores. Each dependency step leaves a `CI dependency cache` hit/miss notice;
 `node scripts/ci/ci-timing-audit.mjs --cache-hits` counts them and splits recent
@@ -532,9 +534,9 @@ negative controls prove a safe improvement.
 
 The runner inventories every tracked `*.test.{ts,tsx,mts,mjs}` file and classifies
 the live-only suites in `scripts/ci/integration-tests.mjs` separately.
-`npm run test:all` runs all ordinary suites, including mixed unit/live files.
-`npm run test:integration -- --list` lists opt-in live suites;
-`npm run test:integration -- --only <group>` runs explicitly configured ones.
+`bun run test:all` runs all ordinary suites, including mixed unit/live files.
+`bun run test:integration -- --list` lists opt-in live suites;
+`bun run test:integration -- --only <group>` runs explicitly configured ones.
 Select service credentials explicitly; never point CI at production.
 Package groups build once and execute only their selected files. Weighted
 assignment accounts for expensive atomic package builds before distributing

@@ -126,29 +126,25 @@ jobs:
         with:
           node-version: 22
 
-      - name: Verify lockfile is in sync
-        run: |
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          git diff --exit-code package-lock.json package.json
       - name: Restore lint cache
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .cache/eslint
-          key: eslint-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', 'scripts/ci/eslint-boundary-rules.mjs') }}-${{ github.sha }}
+          key: eslint-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'eslint.config.mjs', 'scripts/ci/eslint-boundary-rules.mjs') }}-${{ github.sha }}
           restore-keys: |
-            eslint-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'eslint.config.mjs', 'scripts/ci/eslint-boundary-rules.mjs') }}-
+            eslint-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'eslint.config.mjs', 'scripts/ci/eslint-boundary-rules.mjs') }}-
       - name: Lint
-        run: npm run lint -- --cache --cache-strategy content --cache-location .cache/eslint
+        run: bun run lint -- --cache --cache-strategy content --cache-location .cache/eslint
       - name: Raw interactive control guardrail
-        run: npm run check:raw-controls
+        run: bun run check:raw-controls
       - name: Removed chat renderer guard
-        run: npm run check:chat-legacy-imports
+        run: bun run check:chat-legacy-imports
       - name: Convex-native architecture guard
-        run: npm run check:native-architecture
+        run: bun run check:native-architecture
       - name: Web complexity ratchet
-        run: npm run check:web-complexity
+        run: bun run check:web-complexity
       - name: Audit production dependencies
-        run: npm run security:audit
+        run: bun run security:audit
 
   typecheck:
     name: Typecheck and boundary contracts
@@ -173,14 +169,10 @@ jobs:
         uses: ./.github/actions/ci-dependencies
         with:
           node-version: 22
-      - name: Set up pinned native typechecker
-        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
-        with:
-          bun-version: 1.4.4
       - name: Generate current route types
-        run: npx next typegen
+        run: bunx next typegen
       - name: Typecheck and boundary contracts
-        run: npm run typecheck
+        run: bun run typecheck
 
   build:
     name: Production compilation
@@ -213,11 +205,11 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .next/cache
-          key: next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
+          key: next-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
           restore-keys: |
-            next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-
+            next-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'next.config.*', 'tsconfig.json') }}-
       - name: Build
-        run: npm run build
+        run: bun run build
       # Only main seeds the compiler cache. PR and merge-queue saves are scoped to
       # their own refs, cannot help other PRs and evicted main's caches.
       - name: Save Next.js compiler cache
@@ -225,16 +217,16 @@ jobs:
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .next/cache
-          key: next-v1-${{ runner.os }}-${{ hashFiles('package-lock.json', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
+          key: next-v1-${{ runner.os }}-${{ hashFiles('bun.lock', 'next.config.*', 'tsconfig.json') }}-${{ github.sha }}
       # Keep this after build: Workflow generates routes checked by this guard.
       - name: Verify configuration and migration safety
-        run: npm run check:config && npm run test:release-safety
+        run: bun run check:config && bun run test:release-safety
       - name: Verify tenant boundary guard
-        run: npm run check:tenant-boundaries
+        run: bun run check:tenant-boundaries
       - name: Verify admin console separation
-        run: npm run check:admin-separation
+        run: bun run check:admin-separation
       - name: Verify on-prem Convex boundaries
-        run: npm run check:on-prem-convex-boundaries
+        run: bun run check:on-prem-convex-boundaries
 
   tests:
     name: Full suite (${{ matrix.shard }}/2)

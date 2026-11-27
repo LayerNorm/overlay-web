@@ -340,10 +340,10 @@ async function checkDocumentedCommands(failures: string[]) {
 
   for (const file of markdownFiles) {
     const text = await readFile(file, 'utf8')
-    for (const match of text.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
+    for (const match of text.matchAll(/\b(?:npm|bun) run ([A-Za-z0-9:_-]+)/g)) {
       const script = match[1]
       if (script && !packageScripts.has(script)) {
-        failures.push(`${relative(file)} references missing package script npm run ${script}`)
+        failures.push(`${relative(file)} references missing package script ${match[0]}`)
       }
     }
 

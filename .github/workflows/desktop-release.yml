@@ -52,11 +52,17 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
-          cache: 'npm'
-          cache-dependency-path: apps/desktop/package-lock.json
+          package-manager-cache: false
+
+      # Signed builds install straight from the registry, never from a restored cache.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
 
       - name: Install dependencies
-        run: npm ci
+        working-directory: .
+        run: bun install --frozen-lockfile
 
       - name: Verify source and dependencies
         env:
@@ -64,8 +70,8 @@ jobs:
         run: |
           test "$(git rev-parse HEAD)" = "$RELEASE_SOURCE_SHA"
           test -z "$(git status --porcelain)"
-          npm run license:check
-          npm run security:verify:source
+          bun run license:check
+          bun run security:verify:source
 
       - name: Build, sign, and notarize
         env:
@@ -75,15 +81,15 @@ jobs:
           CSC_LINK: ${{ secrets.CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-        run: npm run build:mac:ci
+        run: bun run build:mac:ci
 
       - name: Generate dependency SBOM
-        run: npm run generate:sbom
+        run: bun run generate:sbom
 
       - name: Verify signed artifacts
         env:
           RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
-        run: npm run verify:mac-artifact
+        run: bun run verify:mac-artifact
 
       - name: Save signed acceptance evidence
         if: always()

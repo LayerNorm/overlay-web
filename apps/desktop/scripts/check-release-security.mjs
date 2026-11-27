@@ -21,11 +21,14 @@ const sentryMain = read('src/main/services/sentry.ts')
 const securityService = read('src/main/services/security/security-service.ts')
 const modelDownloads = read('src/main/services/model-download-service.ts')
 
-const lockfiles = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock'].filter((file) =>
+// The app installs from the monorepo's one Bun lockfile, never a lockfile of its own.
+const ownLockfiles = ['package-lock.json', 'pnpm-lock.yaml', 'yarn.lock', 'bun.lock', 'bun.lockb'].filter((file) =>
   fs.existsSync(path.join(root, file))
 )
-if (lockfiles.join(',') !== 'package-lock.json') {
-  failures.push(`npm package-lock.json must be the only lockfile; found: ${lockfiles.join(', ')}`)
+if (ownLockfiles.length > 0 || !fs.existsSync(path.join(root, '../../bun.lock'))) {
+  failures.push(
+    `desktop must install from the repository's bun.lock only; found here: ${ownLockfiles.join(', ') || 'none'}`
+  )
 }
 
 for (const [name, expected] of Object.entries({

@@ -7,7 +7,7 @@ description: "Clone Overlay Web and run the hosted-development profile locally."
 
 - Git.
 - Node.js 22 or newer.
-- npm 11 or newer.
+- Bun 1.4.5 or newer (`curl -fsSL https://bun.sh/install | bash`). Bun installs packages and runs scripts; the app runs on Node.js.
 - Access to the development Convex deployment.
 - WorkOS credentials for sign-in flows.
 - Stripe test credentials when testing billing.
@@ -21,7 +21,7 @@ The local web app starts the Next.js browser shell, `/api/v1` route wrappers, se
 ```bash
 git clone https://github.com/LayerNorm/overlay.git
 cd overlay
-npm ci
+bun install --frozen-lockfile
 cp .env.example .env.local
 ```
 
@@ -34,7 +34,7 @@ profile. For a reproducible self-hosted deployment, use a versioned
 Fill in the required web environment variables before starting the app. For local web work against the development backend, prefer:
 
 ```bash
-npm run dev:with-convex
+bun run dev:with-convex
 ```
 
 This pushes the development Convex deployment first, then starts `next dev`.
@@ -54,13 +54,13 @@ A healthy local boot should show:
 Use the smallest check that covers the change:
 
 ```bash
-npm run typecheck
-npm run lint
-npm run build
+bun run typecheck
+bun run lint
+bun run build
 ```
 
 For docs changes:
 
 ```bash
-npm run docs:check
+bun run docs:check
 ```

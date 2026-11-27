@@ -16,20 +16,16 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Node.js
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node v4
+      - name: Install the workspace
+        uses: ./.github/actions/ci-dependencies
         with:
-          cache: npm
           node-version: 24
 
-      - name: Install dependencies
-        run: npm ci --workspace=@overlay/admin --include-workspace-root=false
-
       - name: Typecheck
-        run: npm run admin:typecheck
+        run: bun run admin:typecheck
 
       - name: Lint
-        run: npm run admin:lint
+        run: bun run admin:lint
 
       - name: Build
-        run: npm run admin:build
+        run: bun run admin:build

@@ -55,7 +55,7 @@ Drive credential renewal uses the bridge protocol's request/response schemas in
 that registry. Its explicit public-route exception replaces app-session authority
 with device signatures, method-scoped host credentials and current execution checks.
 
-The filesystem under `src/app/api/**/route.ts` is authoritative for route existence and exported HTTP methods. Use the [full web API route catalog](./api-route-catalog.md) for behavior, authentication boundaries, and implementation files, or the [compact API route catalog](./compact-api-route-catalog.md) for a one-line inventory. `npm run docs:health` verifies that both catalogs match every route entry point. The generated OpenAPI document intentionally covers a narrower public contract set.
+The filesystem under `src/app/api/**/route.ts` is authoritative for route existence and exported HTTP methods. Use the [full web API route catalog](./api-route-catalog.md) for behavior, authentication boundaries, and implementation files, or the [compact API route catalog](./compact-api-route-catalog.md) for a one-line inventory. `bun run docs:health` verifies that both catalogs match every route entry point. The generated OpenAPI document intentionally covers a narrower public contract set.
 
 ## Rules
 
@@ -64,7 +64,7 @@ The filesystem under `src/app/api/**/route.ts` is authoritative for route existe
 - Keep route behavior backward compatible unless a real bug is found.
 - Prefer parsed typed methods when callers only need data.
 - Add `*Response` methods when callers need status codes, streaming bodies, redirects, or custom error handling.
-- Browser reads and ordinary writes go through native Convex queries and mutations (`ctx.auth` identity). HTTP from the browser is for server work only: model and media runs, stop/approval/input, billing and checkout, OAuth and credentials, email, validation-heavy or audited writes, provider calls and file bytes. `npm run check:native-architecture` (CI, Lint and boundary checks) holds every browser `overlayAppClient.<resource>.<method>` call in `scripts/baselines/browser-http-calls.json`: a new call fails until it is native or deliberately added (with the reason in the PR), and a removed call must leave the baseline. The same check rejects the retired database-provider capability names and the HS256 browser token.
+- Browser reads and ordinary writes go through native Convex queries and mutations (`ctx.auth` identity). HTTP from the browser is for server work only: model and media runs, stop/approval/input, billing and checkout, OAuth and credentials, email, validation-heavy or audited writes, provider calls and file bytes. `bun run check:native-architecture` (CI, Lint and boundary checks) holds every browser `overlayAppClient.<resource>.<method>` call in `scripts/baselines/browser-http-calls.json`: a new call fails until it is native or deliberately added (with the reason in the PR), and a removed call must leave the baseline. The same check rejects the retired database-provider capability names and the HS256 browser token.
 - Browser HTTP reads that stay on purpose (everything else the browser reads is native):
   - `integrations.get` / `getResponse` (connected accounts and the connector catalog) and `surfaces.listChannels` ask the integration provider (Composio, Slack); only the provider knows the answer.
   - `sharing.get` / `sharing.impact` (Share dialog): per-resource-type manager checks and the who-gains-or-loses-access disclosure run in `WorkspaceSharingService` right before the server-checked grant or revoke.

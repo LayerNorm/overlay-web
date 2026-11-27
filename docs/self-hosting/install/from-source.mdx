@@ -73,8 +73,8 @@ Use `.env` for secrets and deployment-specific values. Use `overlay.config.json`
 Validate config from the source checkout:
 
 ```bash
-OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
-npm run docs:health
+OVERLAY_CONFIG_FILE=overlay.config.json bun run check:config
+bun run docs:health
 ```
 
 ## Build After Code Changes

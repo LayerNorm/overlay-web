@@ -42,7 +42,7 @@ test('Convex explicit env file retains the approved key and is removed after spa
 
 test('production builds never push Convex as part of the web build', () => {
   const plan = buildPlan({ VERCEL_ENV: 'production', CONVEX_DEPLOY_KEY: 'prod:wrong|key' })
-  assert.equal(plan.command, 'npm')
+  assert.equal(plan.command, 'bun')
   assert.deepEqual(plan.args, ['run', 'build'])
 })
 
@@ -94,7 +94,7 @@ test('paid QA fixtures require explicit preview opt-in and retain isolated targe
   const env = { ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace' }
   const plan = buildPlan(env)
   assert.deepEqual(plan.after[1].args, ['run', 'dev/seed:initQa', '{}', '--deployment', 'preview/pr-123'])
-  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace' }).command, 'npm')
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'paid-workspace' }).command, 'bun')
   const calls = []
   assert.equal(runBuild(env, (command, args) => {
     calls.push([...args])
@@ -190,7 +190,7 @@ test('Computer QA fixtures require explicit isolated preview opt-in', () => {
   assert.equal(buildPlan(preview).after.length, 1)
   const plan = buildPlan({ ...preview, OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' })
   assert.deepEqual(plan.after[1].args, ['run', 'dev/seed:initComputerQa', '{}', '--deployment', 'preview/pr-123'])
-  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' }).command, 'npm')
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'computer-workspace' }).command, 'bun')
 })
 
 test('retirement QA fixture uses the trusted preview key without ordinary or production seeding', () => {
@@ -200,5 +200,5 @@ test('retirement QA fixture uses the trusted preview key without ordinary or pro
     ['run', 'dev/nativeThreadQa:init', '{}', '--deployment', 'preview/pr-123'],
   ])
   assert.equal(buildPlan(preview).after.length, 1)
-  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'native-thread-retirement' }).command, 'npm')
+  assert.equal(buildPlan({ VERCEL_ENV: 'production', OVERLAY_PREVIEW_QA_FIXTURES: 'native-thread-retirement' }).command, 'bun')
 })
