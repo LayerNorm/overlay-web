@@ -1,8 +1,9 @@
 import { execFile } from 'node:child_process'
+import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { session } from 'electron'
+import { app, session } from 'electron'
 import type {
   Input,
   LocalModelKeys,
@@ -30,11 +31,17 @@ const SHELL_TIMEOUT_MS = 5_000
 const IMPORT_TIMEOUT_MS = 20_000
 const ENV_MARKER = '__OVERLAY_ENV__'
 
+/** Where other tools' settings are read from. Unpackaged builds may point QA at a fixture folder. */
+function setupHome(): string {
+  const override = app.isPackaged ? undefined : process.env.OVERLAY_DESKTOP_DEV_SETUP_HOME?.trim()
+  return override || homedir()
+}
+
 /** The login shell's environment, where people keep model keys; the app itself starts without it on macOS. */
-export function readLoginShellEnvironment(): Promise<Record<string, string>> {
+export function readLoginShellEnvironment(home = homedir()): Promise<Record<string, string>> {
   const shell = process.env.SHELL || '/bin/zsh'
   return new Promise((resolve) => {
-    execFile(shell, ['-ilc', `printf '${ENV_MARKER}'; env -0`], { timeout: SHELL_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: process.env }, (_error, stdout) => {
+    execFile(shell, ['-ilc', `printf '${ENV_MARKER}'; env -0`], { timeout: SHELL_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, HOME: home } }, (_error, stdout) => {
       const text = String(stdout ?? '')
       const start = text.indexOf(ENV_MARKER)
       if (start < 0) return resolve({})
@@ -66,29 +73,33 @@ export function subscriptionSignIns(home: string): LocalSetupScan['subscriptions
 
 type Post = (path: string, workspaceId: string, idempotencyKey: string, body: unknown) => Promise<void>
 
-/** Adds one item to the workspace through Overlay's own API. */
+/**
+ * Adds one item to the workspace through Overlay's own API. Each request's idempotency key covers what it sends, so a
+ * retry never duplicates and importing an edited file again is a new request.
+ */
 export async function importItem(item: ResolvedLocalSetupItem, workspaceId: string, defaults: Input<'localSetup.import'>['agentDefaults'], post: Post): Promise<void> {
-  const key = (suffix = '') => `desktop-setup:${workspaceId}:${item.id}${suffix}`.slice(0, 250)
+  const send = (path: string, body: unknown) => {
+    const digest = createHash('sha256').update(`${workspaceId}\0${path}\0${JSON.stringify(body)}`).digest('hex').slice(0, 40)
+    return post(path, workspaceId, `desktop-setup:${digest}`, body)
+  }
   if (item.kind === 'instructions') {
     const facts = instructionFacts(item.content)
     if (!facts.length) throw new Error('No instructions found to remember.')
-    for (const [index, content] of facts.entries()) {
-      await post('/api/v1/memory', workspaceId, key(`:${index}`), { content, source: 'manual', tags: ['imported'] })
-    }
+    for (const content of facts) await send('/api/v1/memory', { content, source: 'manual', tags: ['imported'] })
     return
   }
   if (item.kind === 'skill') {
-    await post('/api/v1/skills', workspaceId, key(), { name: item.name, description: item.description, instructions: item.instructions, scope: 'personal' })
+    await send('/api/v1/skills', { name: item.name, description: item.description, instructions: item.instructions, scope: 'personal' })
     return
   }
   if (item.kind === 'agent') {
-    await post('/api/v1/agents', workspaceId, key(), {
+    await send('/api/v1/agents', {
       name: item.name, description: item.description, instructions: item.instructions,
       harness: 'overlay', modelId: defaults.modelId, allowedToolIds: defaults.allowedToolIds, visibility: 'creator'
     })
     return
   }
-  await post('/api/v1/mcps', workspaceId, key(), {
+  await send('/api/v1/mcps', {
     name: item.server.name, transport: item.server.transport, url: item.server.url, scope: 'personal', ...mcpAuth(item.server.headers)
   })
 }
@@ -118,8 +129,8 @@ class LocalSetupService {
   private shellKeys: Map<LocalModelProvider, string> | null = null
 
   async scan(): Promise<LocalSetupScan> {
-    const home = homedir()
-    const keys = shellKeysFrom(await readLoginShellEnvironment())
+    const home = setupHome()
+    const keys = shellKeysFrom(await readLoginShellEnvironment(home))
     this.shellKeys = new Map(keys.map(({ provider, value }) => [provider, value]))
     return {
       apps: scanLocalSetup(home),
@@ -129,7 +140,7 @@ class LocalSetupService {
   }
 
   async import(input: Input<'localSetup.import'>): Promise<LocalSetupImportResult> {
-    const home = homedir()
+    const home = setupHome()
     const result: LocalSetupImportResult = { imported: [], failed: [] }
     for (const id of new Set(input.itemIds)) {
       const item = resolveLocalSetupItem(home, id)

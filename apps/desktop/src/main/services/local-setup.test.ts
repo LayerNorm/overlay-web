@@ -76,6 +76,13 @@ describe('local setup import', () => {
     expect(posts[3]!.body).toMatchObject({ name: 'researcher', modelId: 'model-1', visibility: 'creator', harness: 'overlay' })
     expect(posts[4]!.body).toMatchObject({ transport: 'streamable-http', authType: 'bearer', authConfig: { bearerToken: 'lin_secret_token' } })
     expect(new Set(posts.map((entry) => entry.key)).size).toBe(posts.length)
+    // The same contents get the same key (a retry); changed contents get a new one.
+    const again: string[] = []
+    const item = resolveLocalSetupItem(home, claude!.items[1]!.id, 'darwin')!
+    await importItem(item, 'workspace-1', defaults, async (_p, _w, key) => { again.push(key) })
+    await importItem({ ...item, instructions: 'Edited.' } as typeof item, 'workspace-1', defaults, async (_p, _w, key) => { again.push(key) })
+    expect(again[0]).toBe(posts[2]!.key)
+    expect(again[1]).not.toBe(posts[2]!.key)
   })
 })
 
