@@ -597,6 +597,7 @@
     "convex/automations/automationRunner.ts",
     "convex/automations/automations.ts",
     "convex/billing/retireHolds.ts",
+    "convex/billing/usageTotals.ts",
     "convex/chat/conversations.ts",
     "convex/chat/personal.ts",
     "convex/collaboration/directMessages.ts",

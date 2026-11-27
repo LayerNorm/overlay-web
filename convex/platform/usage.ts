@@ -9,6 +9,7 @@ import { paidWorkspaceAccountFor } from '../billing/workspacePayer'
 import { workspaceBudgetLow } from '../../src/shared/billing/execution-access'
 import { canceledPlanCreditPatch, ensureEmptyBalance, ensurePersonalBillingAccount } from '../billing/accountModel'
 import { previewProviderBudgetSpent, recordPreviewProviderSpend } from '../lib/previewProviderBudget'
+import { insertUsageOperation } from '../billing/usageTotals'
 
 function countsAsMessage(event: {
   type: 'ask' | 'write' | 'agent' | 'embedding' | 'transcription' | 'generation' | 'sandbox'
@@ -339,7 +340,7 @@ export const recordBatch = mutation({
     const result = await applyUsageEvents(ctx, userId, events)
     if (operationId) {
       const cents = events.reduce((sum, event) => sum + Math.max(0, event.cost), 0)
-      await ctx.db.insert('usageOperations', {
+      await insertUsageOperation(ctx, {
         userId,
         billingAccountId: billingAccount.billingAccountId,
         operationId,
@@ -381,7 +382,7 @@ async function chargeWorkspaceDirect(ctx: MutationCtx, args: {
     })
     await finalizeWorkspaceLedger(ctx, { actualMicros: chargeMicros, balance, limit: null, reservedMicros: 0 })
   }
-  await ctx.db.insert('usageOperations', {
+  await insertUsageOperation(ctx, {
     userId: args.userId,
     billingAccountId: args.billingAccountId,
     operationId: args.operationId || `batch_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
