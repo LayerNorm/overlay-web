@@ -1,7 +1,7 @@
 import React, { createContext, use, useCallback, useEffect, useMemo, useState } from 'react'
 import AsyncStorage from '@react-native-async-storage/async-storage'
 import * as Haptics from 'expo-haptics'
-import { DEFAULT_PANEL_SCOPE, parsePanelScope } from '../../src/shared/workspaces/panel-scope'
+import { DEFAULT_PANEL_SCOPE, parsePanelScope } from '../../../src/shared/workspaces/panel-scope'
 import { useWorkspace } from './WorkspaceContext'
 import { useNativeDataReady } from './ConvexAuthProvider'
 import { api, mutateConvex } from '../services/convexClient'

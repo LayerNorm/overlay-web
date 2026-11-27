@@ -9,17 +9,17 @@ import { toNativeChatTranscriptView } from '../lib/toNativeChatTranscriptView'
 import { createNativeTranscriptDomSnapshot, MAX_NATIVE_TRANSCRIPT_DELIVERY_EPOCH } from '../lib/nativeChatTranscriptProjection'
 import type { NativeTranscriptProjectionAsset } from '../lib/nativeChatTranscriptProjection'
 import NativeSharedTranscript from '../components/chat/NativeSharedTranscript.dom'
-import { knowledgeSourceHref } from '../../packages/overlay-chat-react/src/lib/knowledge-sources'
+import { knowledgeSourceHref } from '../../../packages/overlay-chat-react/src/lib/knowledge-sources'
 import { MAX_TRANSCRIPT_TEXT_LENGTH, type NativeTranscriptActionRequest, type NativeTranscriptActionResult } from '../lib/nativeChatTranscriptActions'
 import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH } from '../lib/nativeTranscriptLimits'
 
-const rendererApi = require('../../node_modules/react-test-renderer') as {
+const rendererApi = require('../../../node_modules/react-test-renderer') as {
   act: (callback: () => void | Promise<void>) => Promise<void>
   create: (element: React.ReactElement) => { root: { findByProps: (props: Record<string, unknown>) => { props: Record<string, (...args: unknown[]) => unknown> & Record<string, unknown>; children: unknown[] }; findAllByProps: (props: Record<string, unknown>) => unknown[] }; update: (element: React.ReactElement) => void; unmount: () => void; toJSON: () => unknown }
 }
 const { act, create } = rendererApi
 const runAct = (callback: () => void | Promise<void>) => act(callback)
-const { renderToStaticMarkup } = require('../../node_modules/react-dom/server') as { renderToStaticMarkup: (element: React.ReactElement) => string }
+const { renderToStaticMarkup } = require('../../../node_modules/react-dom/server') as { renderToStaticMarkup: (element: React.ReactElement) => string }
 const mobilePackage = require('../package.json') as { devDependencies: { playwright: string } }
 const mobilePlaywrightPath = require.resolve('../node_modules/playwright/package.json')
 const importedPlaywrightPath = require.resolve('playwright/package.json')
@@ -28,8 +28,8 @@ if (mobilePlaywrightPath !== importedPlaywrightPath || playwrightPackage.version
   throw new Error('The mounted transcript suite must use Mobile’s declared Playwright package.')
 }
 const { chromium } = require('playwright') as typeof import('playwright')
-const esbuildApi = require('../../node_modules/esbuild') as { build: (options: Record<string, unknown>) => Promise<{ outputFiles: Array<{ text: string }> }> }
-const { buildAutomationDraftFromTurn } = require('../../src/features/automations/lib/automation-drafts.ts') as {
+const esbuildApi = require('../../../node_modules/esbuild') as { build: (options: Record<string, unknown>) => Promise<{ outputFiles: Array<{ text: string }> }> }
+const { buildAutomationDraftFromTurn } = require('../../../src/features/automations/lib/automation-drafts.ts') as {
   buildAutomationDraftFromTurn: (input: { userText: string }) => { graphSource: string; [key: string]: unknown }
 }
 
@@ -151,7 +151,7 @@ function deferred<T>() {
 }
 
 async function nativeTranscriptBrowserBundle(): Promise<string> {
-  const parentWebRoot = resolve(process.cwd(), '..')
+  const parentWebRoot = resolve(process.cwd(), '../..')
   const entry = `
     import React from 'react'
     import { createRoot } from 'react-dom/client'
@@ -191,7 +191,7 @@ async function nativeTranscriptBrowserBundle(): Promise<string> {
     format: 'iife',
     platform: 'browser',
     target: 'chrome120',
-    tsconfig: '../tsconfig.json',
+    tsconfig: '../../tsconfig.json',
     define: { 'process.env.NODE_ENV': '"production"' },
     plugins: [{
       name: 'pinned-parent-web-dependencies',

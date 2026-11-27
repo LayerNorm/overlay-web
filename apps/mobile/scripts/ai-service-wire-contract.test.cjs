@@ -10,7 +10,7 @@ const projectRoot = path.resolve(__dirname, '..')
 const aiServicePath = path.join(projectRoot, 'services/aiService.ts')
 const actPolicyPath = path.join(
   projectRoot,
-  '..',
+  '../..',
   'src/server/app-api/v1/conversations/act/act-route-policy.ts',
 )
 

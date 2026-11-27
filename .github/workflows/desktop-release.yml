@@ -1,5 +1,9 @@
-name: Release macOS
+name: Desktop release (macOS)
 
+# Builds, signs, notarizes and publishes the desktop app from one exact source
+# commit. Releases are tagged desktop-v<version> in this repository. The Mac
+# app's updater reads this repository's latest release, so desktop releases are
+# the only releases marked latest here.
 on:
   workflow_dispatch:
     inputs:
@@ -23,9 +27,13 @@ jobs:
       contents: read
       id-token: write
       attestations: write
+    defaults:
+      run:
+        working-directory: apps/desktop
 
     steps:
       - name: Validate immutable source
+        working-directory: .
         env:
           RELEASE_SOURCE_SHA: ${{ inputs.release_source_sha }}
         run: |
@@ -45,6 +53,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
+          cache-dependency-path: apps/desktop/package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -78,10 +87,10 @@ jobs:
 
       - name: Save signed acceptance evidence
         if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: signed-acceptance-${{ inputs.release_source_sha }}
-          path: test-results/signed-acceptance/
+          path: apps/desktop/test-results/signed-acceptance/
           if-no-files-found: warn
           retention-days: 7
 
@@ -89,27 +98,27 @@ jobs:
         uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.yml
-            dist/*.blockmap
-            dist/sbom.cdx.json
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/sbom.cdx.json
 
       - name: Upload immutable release candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: overlay-macos-${{ inputs.release_source_sha }}
           path: |
-            dist/*.dmg
-            dist/*.zip
-            dist/*.yml
-            dist/*.blockmap
-            dist/sbom.cdx.json
-            dist/release-manifest.json
+            apps/desktop/dist/*.dmg
+            apps/desktop/dist/*.zip
+            apps/desktop/dist/*.yml
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/sbom.cdx.json
+            apps/desktop/dist/release-manifest.json
           if-no-files-found: error
           retention-days: 7
 
-  # Publish to this same public repo's GitHub Releases (open-source model).
+  # Publish to this repository's GitHub Releases (open-source model).
   # Build job never receives write access; publish uses GITHUB_TOKEN only.
   publish-mac:
     needs: build-mac
@@ -133,8 +142,8 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="$(node -p "require('./dist/release-manifest.json').version")"
-          TAG="v${VERSION}"
-          NOTES="Built from source commit ${RELEASE_SOURCE_SHA}."
+          TAG="desktop-v${VERSION}"
+          NOTES="Overlay Desktop ${VERSION}, built from source commit ${RELEASE_SOURCE_SHA}."
 
           if gh release view "$TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
             echo "Release $TAG already exists; uploading assets only."
@@ -142,6 +151,8 @@ jobs:
           else
             gh release create "$TAG" dist/* \
               --repo "$RELEASE_REPO" \
-              --title "Overlay v${VERSION}" \
-              --notes "$NOTES"
+              --target "$RELEASE_SOURCE_SHA" \
+              --title "Overlay Desktop v${VERSION}" \
+              --notes "$NOTES" \
+              --latest
           fi

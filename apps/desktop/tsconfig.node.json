@@ -12,6 +12,7 @@
       "electron-vite/node"
     ],
     "baseUrl": ".",
-    "paths": {}
+    // The shared bridge package lives in the monorepo's packages/ folder; its zod resolves from this app.
+    "paths": { "zod": ["./node_modules/zod"] }
   }
 }

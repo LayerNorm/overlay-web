@@ -206,17 +206,17 @@ function fixture() {
   }
   const convex = load('services/convexClient.ts', { './appApi': { getRequestWorkspaceId: () => 'workspace-1' }, './convexApi': { api } })
   convex.setMobileConvexClient(client)
-  const projection = load('../src/shared/chat/public-stream-projection.ts', { './transcript-part-identity': load('../src/shared/chat/transcript-part-identity.ts') })
-  const service = load('services/collaborationService.ts', { './overlayClient': { mobileOverlayAppClient: {} }, './convexClient': convex, '../../src/shared/chat/public-stream-projection': projection })
+  const projection = load('../../src/shared/chat/public-stream-projection.ts', { './transcript-part-identity': load('../../src/shared/chat/transcript-part-identity.ts') })
+  const service = load('services/collaborationService.ts', { './overlayClient': { mobileOverlayAppClient: {} }, './convexClient': convex, '../../../src/shared/chat/public-stream-projection': projection })
   const personal = () => load('services/chatStorage.ts', {
-    '../lib/agentThread': load('lib/agentThread.ts', { '@overlay/chat-core': {}, '../../src/shared/agents/native-agent-approval': {}, '../../src/shared/agents/native-agent-input': {}, '../../src/shared/agents/run-questions': {} }),
+    '../lib/agentThread': load('lib/agentThread.ts', { '@overlay/chat-core': {}, '../../../src/shared/agents/native-agent-approval': {}, '../../../src/shared/agents/native-agent-input': {}, '../../../src/shared/agents/run-questions': {} }),
     '@react-native-async-storage/async-storage': { default: { getItem: async () => null, setItem: async () => {} } },
     '@overlay/chat-core': { normalizeTranscriptAssistantParts: () => ({ blocks: [], sources: [] }) },
     '../lib/toNativeChatMessage': loadNativeChatMessageMapper(),
     './convexClient': convex,
     './convexPagination': load('services/convexPagination.ts', { './convexClient': convex }),
     './appApi': {}, './chatTypes': { generateChatId: () => 'draft-1' },
-    '../../src/shared/chat/public-stream-projection': projection,
+    '../../../src/shared/chat/public-stream-projection': projection,
   })
   const emit = (ref, value) => { values.set(ref, value); watches.get(ref)?.() }
   return { service, personal, convex, calls, watches, values, emit }

@@ -25,10 +25,10 @@ function load(file) {
       if (id === '@overlay/chat-core') {
         return Object.assign(
           {},
-          loadFile('../packages/overlay-chat-core/src/messages.ts'),
-          loadFile('../packages/overlay-chat-core/src/sources.ts'),
-          loadFile('../packages/overlay-chat-core/src/transcript-view.ts'),
-          loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
+          loadFile('../../packages/overlay-chat-core/src/messages.ts'),
+          loadFile('../../packages/overlay-chat-core/src/sources.ts'),
+          loadFile('../../packages/overlay-chat-core/src/transcript-view.ts'),
+          loadFile('../../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
       }
       if (id.startsWith('react-native') || id.startsWith('expo-') || id.startsWith('convex/')) {
@@ -136,7 +136,7 @@ test('preserves multiple model variants and keeps canonical selected blocks on o
     url: 'https://example.test',
     title: 'Example',
   }
-  const normalized = load('../packages/overlay-chat-core/src/transcript-view.ts')
+  const normalized = load('../../packages/overlay-chat-core/src/transcript-view.ts')
     .normalizeTranscriptAssistantParts([
       { type: 'reasoning', text: 'Selected reasoning' },
       {
@@ -533,7 +533,7 @@ test('pagination context users and repeated output rows are deduplicated without
 
 test('ordered streaming blocks preserve text before tool, reasoning, and file blocks', () => {
   const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
-  const { normalizeTranscriptAssistantParts } = load('../packages/overlay-chat-core/src/transcript-view.ts')
+  const { normalizeTranscriptAssistantParts } = load('../../packages/overlay-chat-core/src/transcript-view.ts')
   const committedText = 'Committed text before the tool with an unfinished-looking tail'
   const normalized = normalizeTranscriptAssistantParts([
     { type: 'text', text: committedText },
@@ -561,7 +561,7 @@ test('ordered streaming blocks preserve text before tool, reasoning, and file bl
 
 test('canonical streaming completion only holds a true trailing text block', () => {
   const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
-  const { normalizeTranscriptAssistantParts } = load('../packages/overlay-chat-core/src/transcript-view.ts')
+  const { normalizeTranscriptAssistantParts } = load('../../packages/overlay-chat-core/src/transcript-view.ts')
   const committedText = 'Committed text before tool output'
   const tail = 'Heading\n\nComplete paragraph.\n\npartial tail'
   const normalized = normalizeTranscriptAssistantParts([

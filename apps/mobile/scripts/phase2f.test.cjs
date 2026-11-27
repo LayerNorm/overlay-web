@@ -215,7 +215,7 @@ test('deletion callback routing and process-restart protection do not establish 
     /if \(getAccountDeletionState\(\)\.busy \|\| isAccountDeletionCallback\(event.url\)\) return/,
   )
   assert.match(
-    fs.readFileSync(path.join(root, '../src/app/auth/native/callback/route.ts'), 'utf8'),
+    fs.readFileSync(path.join(root, '../../src/app/auth/native/callback/route.ts'), 'utf8'),
     /overlay:\/\/auth\/callback/,
   )
 })

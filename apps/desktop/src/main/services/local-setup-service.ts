@@ -10,7 +10,7 @@ import type {
   LocalModelProvider,
   LocalSetupImportResult,
   LocalSetupScan
-} from '../../../packages/overlay-desktop-bridge/src/index'
+} from '@overlay/desktop-bridge'
 import { instructionFacts, mcpAuth, resolveLocalSetupItem, scanLocalSetup, type ResolvedLocalSetupItem } from './local-setup'
 import { privateThreadsService } from './private-threads-service'
 import { getWebShellOrigin, WEB_SHELL_PARTITION } from './web-shell'

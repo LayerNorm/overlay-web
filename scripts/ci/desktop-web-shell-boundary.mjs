@@ -1,11 +1,10 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { createHash } from 'node:crypto'
 
 /** The desktop shares web renderers by loading the app, rather than vendoring them. */
 export function desktopWebShellViolations(root) {
   const failures = []
-  const desktop = join(root, 'overlay-desktop')
+  const desktop = join(root, 'apps/desktop')
   const read = (path) => (existsSync(path) ? readFileSync(path, 'utf8') : null)
   const entry = read(join(desktop, 'src/main/index.ts'))
   if (!entry?.includes("from './services/web-shell'"))
@@ -26,29 +25,13 @@ export function desktopWebShellViolations(root) {
     'overlay-modules-react',
     'overlay-api-client',
     'overlay-llm-gateway',
+    'overlay-desktop-bridge',
   ]) {
     if (existsSync(join(desktop, 'packages', name)))
       failures.push(`desktop must not vendor ${name}`)
   }
-  const canonical = read(
-    join(root, 'packages/overlay-desktop-bridge/src/index.ts'),
-  )
-  const vendored = read(
-    join(desktop, 'packages/overlay-desktop-bridge/src/index.ts'),
-  )
-  if (!canonical || vendored !== canonical)
-    failures.push('desktop must vendor the exact canonical bridge contract')
-  if (canonical) {
-    const fingerprint = createHash('sha256').update(canonical).digest('hex')
-    for (const base of [root, desktop]) {
-      if (
-        read(
-          join(base, 'packages/overlay-desktop-bridge/source.sha256'),
-        )?.trim() !== fingerprint
-      )
-        failures.push('desktop bridge fingerprint must match its source')
-    }
-  }
+  if (!existsSync(join(root, 'packages/overlay-desktop-bridge/src/index.ts')))
+    failures.push('the shared desktop bridge contract is missing')
   const webEnrollment = read(
     join(root, 'src/server/agents/agent-enrollment-command.ts'),
   )
@@ -67,6 +50,9 @@ export function desktopWebShellViolations(root) {
   if (!manifest) failures.push('desktop manifest is missing')
   else {
     const parsed = JSON.parse(manifest)
+    // One bridge contract: the desktop links the shared package instead of copying it.
+    if (parsed.dependencies?.['@overlay/desktop-bridge'] !== 'file:../../packages/overlay-desktop-bridge')
+      failures.push('desktop must depend on the shared bridge package')
     for (const name of Object.keys({
       ...parsed.dependencies,
       ...parsed.devDependencies,

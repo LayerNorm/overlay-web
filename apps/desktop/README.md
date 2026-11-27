@@ -30,7 +30,7 @@ npm run test:e2e
 
 - **Web shell.** One window pinned to one server origin. Remote pages get no Node
   access; only the top-level page of that origin receives the typed desktop bridge
-  (`packages/overlay-desktop-bridge`, copied from overlay-web, so keep it in sync).
+  (`@overlay/desktop-bridge`, the shared package in the monorepo's `packages/overlay-desktop-bridge`).
   The main process validates every call again.
 - **Dictation.** Default shortcut Control+Space (tap to toggle, hold to talk).
   Local WhisperKit and Parakeet models run offline after download; cloud

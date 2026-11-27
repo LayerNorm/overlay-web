@@ -4,8 +4,8 @@ require('tsx/cjs')
 const assert = require('node:assert/strict')
 const Module = require('node:module')
 const test = require('node:test')
-const React = require('../../node_modules/react')
-const { act, create } = require('../../node_modules/react-test-renderer')
+const React = require('../../../node_modules/react')
+const { act, create } = require('../../../node_modules/react-test-renderer')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -44,7 +44,7 @@ const originalLoad = Module._load
 Module._load = function loadProofHelperMock(request, parent, isMain) {
   if (parent?.filename.endsWith('/components/chat/SharedTranscriptProofMode.tsx')) {
     if (request === 'react') return React
-    if (request === 'react/jsx-runtime') return require('../../node_modules/react/jsx-runtime')
+    if (request === 'react/jsx-runtime') return require('../../../node_modules/react/jsx-runtime')
     if (request === 'expo-router') return { useFocusEffect }
     if (request === 'expo-crypto') return { randomUUID: () => `00000000-0000-4000-8000-${String(++uuidSequence).padStart(12, '0')}` }
     if (request === 'expo-clipboard') return {

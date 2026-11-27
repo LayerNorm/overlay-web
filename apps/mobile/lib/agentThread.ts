@@ -3,13 +3,13 @@ import {
   type AssistantVisualBlock,
 } from '@overlay/chat-core'
 import type { RoomMessageRecord } from './roomMessages'
-import { readNativeAgentApproval } from '../../src/shared/agents/native-agent-approval'
-import { readNativeAgentInput } from '../../src/shared/agents/native-agent-input'
+import { readNativeAgentApproval } from '../../../src/shared/agents/native-agent-approval'
+import { readNativeAgentInput } from '../../../src/shared/agents/native-agent-input'
 
 export {
   decodeRunQuestions,
   formatRunAnswers,
-} from '../../src/shared/agents/run-questions'
+} from '../../../src/shared/agents/run-questions'
 
 export function completeMarkdown(text: string, streaming: boolean): string {
   if (!streaming) return text

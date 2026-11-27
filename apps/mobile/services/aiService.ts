@@ -6,7 +6,7 @@ import { getAppBootstrap } from './bootstrapService'
 import { sortChatModels } from '../lib/chatModels'
 import { submitPersonalTurn, type PersonalTurn } from './personalChatService'
 import { convexWorkspaceId } from './convexClient'
-import { buildActStreamIdempotencyKey } from '../../src/shared/api/act-idempotency'
+import { buildActStreamIdempotencyKey } from '../../../src/shared/api/act-idempotency'
 
 const LAST_SELECTED_MODEL_KEY = 'overlay-last-selected-model-id'
 

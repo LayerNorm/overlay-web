@@ -69,5 +69,5 @@ npmRebuild: true
 publish:
   provider: github
   owner: LayerNorm
-  repo: overlay-desktop
+  repo: overlay
   releaseType: release

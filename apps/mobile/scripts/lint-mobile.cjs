@@ -8,7 +8,7 @@ const baseline = require('./lint-baseline.json')
 let output
 try {
   output = execFileSync(
-    path.join(root, '../node_modules/.bin/eslint'),
+    path.join(root, '../../node_modules/.bin/eslint'),
     [
       'app',
       'components',
@@ -18,6 +18,8 @@ try {
       'services',
       'scripts',
       'app.config.js',
+      // The root config ignores apps/** for the web lint; mobile lints its own folders with the same rules.
+      '--no-ignore',
       '--format',
       'json',
     ],

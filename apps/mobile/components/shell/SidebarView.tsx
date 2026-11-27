@@ -21,7 +21,7 @@ import type { Theme } from '../../constants/theme'
 import {
   summarizeThreadActivity,
   type ThreadActivityStatus,
-} from '../../../src/shared/agents/thread-activity'
+} from '../../../../src/shared/agents/thread-activity'
 import { AgentAvatar } from './AgentAvatar'
 import { OverlayMark } from './Brand'
 import { IconButton, T } from './primitives'

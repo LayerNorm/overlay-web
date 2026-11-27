@@ -1,18 +1,18 @@
 import type { CreateWorkItemRequest, WorkItem, WorkPerson } from '@overlay/app-core'
-import { validateWorkDates, validateWorkTitle, WORK_LIMITS } from '../../src/shared/work/status'
+import { validateWorkDates, validateWorkTitle, WORK_LIMITS } from '../../../src/shared/work/status'
 
-export { filterWork, groupByStatus } from '../../src/shared/work/query'
-export type { WorkFilter } from '../../src/shared/work/query'
-export { WORK_STATUS_LABELS, WORK_STATUSES } from '../../src/shared/work/status'
-export { formatWorkDate, toWorkDate, addDays } from '../../src/shared/work/dates'
+export { filterWork, groupByStatus } from '../../../src/shared/work/query'
+export type { WorkFilter } from '../../../src/shared/work/query'
+export { WORK_STATUS_LABELS, WORK_STATUSES } from '../../../src/shared/work/status'
+export { formatWorkDate, toWorkDate, addDays } from '../../../src/shared/work/dates'
 export {
   actorName,
   describeEvent,
   commentBody,
   formatAgo,
   indexPeople,
-} from '../../src/shared/work/activity'
-export { canWorkOnItem } from '../../src/shared/work/permissions'
+} from '../../../src/shared/work/activity'
+export { canWorkOnItem } from '../../../src/shared/work/permissions'
 
 export function availableWorkPeople(
   people: readonly WorkPerson[],

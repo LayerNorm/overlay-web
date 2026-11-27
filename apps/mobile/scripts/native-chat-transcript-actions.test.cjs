@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const fs = require('node:fs')
 const path = require('node:path')
 const test = require('node:test')
-const ts = require('../../node_modules/typescript')
+const ts = require('../../../node_modules/typescript')
 const vm = require('node:vm')
 
 const root = path.resolve(__dirname, '..')
@@ -23,15 +23,15 @@ function load(file) {
       if (id === '@overlay/chat-core') {
         return Object.assign(
           {},
-          loadFile('../packages/overlay-chat-core/src/messages.ts'),
-          loadFile('../packages/overlay-chat-core/src/sources.ts'),
-          loadFile('../packages/overlay-chat-core/src/transcript-view.ts'),
-          loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
+          loadFile('../../packages/overlay-chat-core/src/messages.ts'),
+          loadFile('../../packages/overlay-chat-core/src/sources.ts'),
+          loadFile('../../packages/overlay-chat-core/src/transcript-view.ts'),
+          loadFile('../../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
       }
       if (!id.startsWith('.')) {
         if (id.startsWith('node:')) return require(id)
-        return require(require.resolve(id, { paths: [path.resolve(root, '..')] }))
+        return require(require.resolve(id, { paths: [path.resolve(root, '../..')] }))
       }
       const base = path.resolve(path.dirname(filename), id)
       const candidate = [base, `${base}.ts`, `${base}.tsx`].find((item) => fs.existsSync(item) && fs.statSync(item).isFile())
@@ -48,8 +48,8 @@ const { createNativeTranscriptActionController, MAX_TRANSCRIPT_TEXT_LENGTH } = l
 const { createNativeTranscriptDomSnapshot } = load('lib/nativeChatTranscriptProjection.ts')
 const { toNativeChatTranscriptView } = load('lib/toNativeChatTranscriptView.ts')
 const { mapNativePersonalMessageRows } = load('lib/toNativeChatMessage.ts')
-const { collectWebSourcesFromBlocks } = load('../packages/overlay-chat-core/src/sources.ts')
-const { buildAutomationDraftFromTurn } = load('../src/features/automations/lib/automation-drafts.ts')
+const { collectWebSourcesFromBlocks } = load('../../packages/overlay-chat-core/src/sources.ts')
+const { buildAutomationDraftFromTurn } = load('../../src/features/automations/lib/automation-drafts.ts')
 const { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT } = load('lib/nativeTranscriptLimits.ts')
 
 function realAutomationDraft() {

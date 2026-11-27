@@ -25,9 +25,9 @@ function loadNativeChatMessageMapper() {
       if (id === '@overlay/chat-core') {
         return Object.assign(
           {},
-          loadFile('../packages/overlay-chat-core/src/messages.ts'),
-          loadFile('../packages/overlay-chat-core/src/transcript-view.ts'),
-          loadFile('../packages/overlay-chat-core/src/visual-sequence.ts'),
+          loadFile('../../packages/overlay-chat-core/src/messages.ts'),
+          loadFile('../../packages/overlay-chat-core/src/transcript-view.ts'),
+          loadFile('../../packages/overlay-chat-core/src/visual-sequence.ts'),
         )
       }
       if (id.startsWith('react-native') || id.startsWith('expo-') || id.startsWith('convex/')) {

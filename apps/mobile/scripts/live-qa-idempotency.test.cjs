@@ -115,7 +115,7 @@ test('room sends carry their stable nonce to the shared client idempotency heade
   const calls = []
   const service = load('services/collaborationService.ts', {
     './overlayClient': { mobileOverlayAppClient: { conversations: { addMessage: async (...args) => calls.push(clean(args)) } } },
-    './convexClient': {}, '../lib/activity': {}, '../../src/shared/chat/public-stream-projection': {},
+    './convexClient': {}, '../lib/activity': {}, '../../../src/shared/chat/public-stream-projection': {},
   })
   const turn = { conversationId: 'room', turnId: 'turn', clientNonce: 'stable-nonce', content: 'Hello', mentionedPrincipalIds: [], memoryEnabled: true }
   await service.sendRoomMessage(turn); await service.sendRoomMessage(turn)

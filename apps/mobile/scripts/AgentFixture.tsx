@@ -12,7 +12,7 @@ import {
 } from '../components/agents/AgentThreadViews'
 import { AgentEditorView } from '../components/agents/AgentEditorView'
 import type { AgentRecord } from '../services/agentThreadService'
-import { encodeRunQuestions } from '../../src/shared/agents/run-questions'
+import { encodeRunQuestions } from '../../../src/shared/agents/run-questions'
 import type { RoomMessageRecord } from '../lib/roomMessages'
 import { AGENT_TOOL_GROUPS } from '../lib/agentToolGroups'
 

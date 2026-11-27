@@ -4,8 +4,8 @@ require('tsx/cjs')
 const assert = require('node:assert/strict')
 const Module = require('node:module')
 const test = require('node:test')
-const React = require('../../node_modules/react')
-const { act, create } = require('../../node_modules/react-test-renderer')
+const React = require('../../../node_modules/react')
+const { act, create } = require('../../../node_modules/react-test-renderer')
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 const ThemeContext = React.createContext({ background: '#111', text: '#eee', textSecondary: '#aaa', foreground: '#eee', surfaceElevated: '#222', surfaceSubtle: '#333', border: '#444' })
 const RouteParamsContext = React.createContext({})
@@ -125,7 +125,7 @@ const originalLoad = Module._load
 Module._load = function (request, parent, isMain) {
   const filename = parent?.filename || ''
   if (request === 'react') return React
-  if (request === 'react/jsx-runtime') return require('../../node_modules/react/jsx-runtime')
+  if (request === 'react/jsx-runtime') return require('../../../node_modules/react/jsx-runtime')
   if (request === 'react-native') return rn
   if (request === 'expo-router') return { Stack: MockStack, useFocusEffect: focus, useRouter: () => router, useNavigation: () => navigation, useLocalSearchParams: () => React.useContext(RouteParamsContext), usePathname: () => state.pathname, useGlobalSearchParams: () => state.globalRouteParams ?? {} }
   if (filename.endsWith('/components/shell/AppShell.tsx')) {

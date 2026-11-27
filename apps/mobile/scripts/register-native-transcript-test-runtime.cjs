@@ -2,7 +2,7 @@
 const Module = require('node:module')
 const path = require('node:path')
 
-const webRoot = path.resolve(__dirname, '../..')
+const webRoot = path.resolve(__dirname, '../../..')
 const sharedReact = require.resolve('react', { paths: [webRoot] })
 const sharedReactVersion = require(require.resolve('react/package.json', { paths: [webRoot] })).version
 const sharedReactDomVersion = require(require.resolve('react-dom/package.json', { paths: [webRoot] })).version

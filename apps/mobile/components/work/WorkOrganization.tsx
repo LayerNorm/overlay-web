@@ -13,8 +13,8 @@ import {
   VStack,
 } from '@expo/ui/swift-ui'
 import { font, lineLimit, tint } from '@expo/ui/swift-ui/modifiers'
-import { agentsForMode } from '../../../src/shared/agents/last-agent-by-workspace'
-import { chiefRoleLabel, isPinnedChief, pinChiefs } from '../../../src/shared/agents/chief-identity'
+import { agentsForMode } from '../../../../src/shared/agents/last-agent-by-workspace'
+import { chiefRoleLabel, isPinnedChief, pinChiefs } from '../../../../src/shared/agents/chief-identity'
 import { useNativeDataReady } from '../../contexts/ConvexAuthProvider'
 import { useTheme } from '../../hooks/useTheme'
 import { useMode } from '../../contexts/ModeContext'

@@ -1,4 +1,4 @@
-import { methodSchemas } from '../../packages/overlay-desktop-bridge/src/index'
+import { methodSchemas } from '@overlay/desktop-bridge'
 
 /** Decode Chromium capture before handing local inference a Core Audio file. */
 export async function prepareTranscriptionAudio(input: unknown): Promise<unknown> {

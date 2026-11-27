@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import type { LocalSetupApp, LocalSetupItem, LocalSetupItemKind } from '../../../packages/overlay-desktop-bridge/src/index'
+import type { LocalSetupApp, LocalSetupItem, LocalSetupItemKind } from '@overlay/desktop-bridge'
 
 /**
  * Finds what other AI tools keep on this computer (internal/plans/DESKTOP_ONBOARDING_PLAN.md in overlay-web):

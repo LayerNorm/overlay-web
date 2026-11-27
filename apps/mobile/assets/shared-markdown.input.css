@@ -4,9 +4,9 @@
 
 @source "../components/chat/SharedMarkdownRenderer.dom.tsx";
 @source "../components/chat/NativeSharedTranscript.dom.tsx";
-@source "../../packages/overlay-chat-react/src/**/*.{ts,tsx}";
-@source "../../packages/overlay-ui/src/**/*.{ts,tsx}";
-@source "../../node_modules/streamdown/dist/*.js";
+@source "../../../packages/overlay-chat-react/src/**/*.{ts,tsx}";
+@source "../../../packages/overlay-ui/src/**/*.{ts,tsx}";
+@source "../../../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:where([data-theme='dark'], [data-theme='dark'] *));
 

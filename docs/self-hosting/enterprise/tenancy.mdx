@@ -82,6 +82,7 @@ These user-owned tables intentionally do **not** have `tenantId` today because t
 | `tokenUsage` | `userId` | Deployment boundary | Add `tenantId`; usage and billing rollups must be tenant-scoped. |
 | `budgetReservations` | `userId` | Deployment boundary | Add `tenantId`; reservation and reconciliation queries must be tenant-scoped. |
 | `usageOperations` | `userId` | Deployment boundary | Add `tenantId`; operation identity, request fingerprints, and reconciliation must be tenant-scoped. |
+| `usageDays` | `userId` | Deployment boundary | Add `tenantId`; daily billing totals per account, person, resource and model must be tenant-scoped. |
 | `administrativePrincipals` | `userId` | Deployment boundary | Add `tenantId`; administrative role grants and revocations must be tenant-scoped and audited. |
 | `toolInvocations` | `userId` | Deployment boundary | Add `tenantId`; audit/cost views must include tenant context. |
 | `dailyUsage` | `userId` | Deployment boundary | Add `tenantId`; usage counters must include tenant context. |

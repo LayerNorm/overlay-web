@@ -47,6 +47,7 @@ Preview credentials retain the no-expiry policy.
 
 ## Learned Workspace Facts
 
+- One repository holds every surface (GitHub `LayerNorm/overlay`, local `~/Downloads/overlay`): web and backend at the root (authoritative), `apps/desktop` (Electron), `apps/mobile` (Expo), `apps/chrome` (extension) and `apps/admin`. Apps import shared code from `packages/*` instead of copying it, keep their own lockfiles and path-filtered workflows, and reach the root with `../../`. Production web builds skip commits that only touch those three apps. Desktop releases are `desktop-v<version>` releases of this repository and must be the only releases marked latest. See `internal/develop/surfaces.md`.
 - This Next.js app selects Convex URL from env: development commonly uses `DEV_NEXT_PUBLIC_CONVEX_URL` for a separate dev backend from production `NEXT_PUBLIC_CONVEX_URL`.
 - Session state uses httpOnly `overlay_session` with the WorkOS access token inside the signed payload. WorkOS access tokens are JWTs; Convex verifies them with JWKS and issuer/audience checks—`iss` is a claim inside the token, not a separate secret or cookie name.
 - App code is layered: `src/features/<domain>/`, `src/components/{ui,layout,providers}/`, `src/server/` (server-only), and `src/shared/` (isomorphic). Reusable contracts and adapters live in workspace `packages/` (`@overlay/app-core`, `@overlay/auth-contracts`, `@overlay/storage-contracts`, `@overlay/llm-gateway`, `@overlay/agent-runtime`, `@overlay/tools-core`, `@overlay/api-client`, etc.). `@overlay/api-client` is split into per-resource modules under `packages/overlay-api-client/src/`. Legacy `src/lib/` is gone. tsconfig aliases: `@/server/*`, `@/shared/*`, `@/features/*`.
@@ -102,6 +103,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/source-citations.md` | Any change to numeric knowledge citation linking, mixed web-source ambiguity, or persisted assistant citations. |
 | `internal/develop/convex-workflow.md` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/developer/contribute/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
+| `internal/develop/surfaces.md` | Any change to which surfaces live in `apps/`, how they share code with web, their install/CI/release paths, the web deploy ignore step, or a feature's availability per surface (the parity table). |
 | `internal/develop/admin-console.md` | Any change to `apps/admin/**` (the standalone operator console), its auth/session model, Convex access path, env contract, or deployment lifecycle. |
 | `internal/develop/feature-modules.md` | Any change to the feature module registry, extension system, or `@overlay/app-core` shell config. |
 | `internal/develop/api-source-of-truth.md` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |

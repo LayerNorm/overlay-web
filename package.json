@@ -9,7 +9,7 @@
   "license": "AGPL-3.0-only",
   "workspaces": [
     "packages/*",
-    "apps/*"
+    "apps/admin"
   ],
   "scripts": {
     "convex:push:prod": "CONVEX_DEPLOYMENT=prod:colorful-chickadee-419 convex deploy -y",
@@ -152,13 +152,13 @@
     "convex:backfill:storage": "node --experimental-strip-types scripts/db/convex-storage-backfill.ts",
     "convex:backfill:workspace-ids": "NODE_OPTIONS=--conditions=react-server tsx scripts/db/backfill-workspace-ids.ts",
     "convex:reindex:knowledge": "node --experimental-strip-types scripts/db/convex-knowledge-reindex.ts",
-    "test:jwt": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/qa/smoke-jwt.ts",
+    "test:jwt": "node --env-file=apps/desktop/.env.local --experimental-strip-types scripts/qa/smoke-jwt.ts",
     "test:r2:connectivity": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-connectivity.ts",
     "test:r2:presign": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-presign.ts",
     "test:r2:presign:prod-origin": "R2_CORS_ORIGIN=https://overlay.works node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-presign.ts",
     "test:r2:budget": "node --env-file=.env.local --experimental-strip-types scripts/qa/smoke-r2-budget.ts",
     "r2:cors:apply:dev": "npx wrangler r2 bucket cors set overlay-dev --file config/r2-cors.json",
-    "test:vault:smoke": "node --env-file=../overlay-desktop/.env.local --experimental-strip-types scripts/qa/smoke-vault.ts",
+    "test:vault:smoke": "node --env-file=apps/desktop/.env.local --experimental-strip-types scripts/qa/smoke-vault.ts",
     "stripe:setup:variable-pricing": "node --env-file=.env.local --experimental-strip-types scripts/db/stripe-variable-pricing-setup.ts",
     "test:auth:native-validation": "NODE_OPTIONS=--conditions=react-server node --test --experimental-strip-types src/server/auth/native-auth-validation.test.ts src/server/auth/native-refresh-rate-limit.test.ts",
     "test:auth:native-smoke": "node --env-file=.env.local --experimental-strip-types scripts/qa/native-auth-security-smoke.ts",

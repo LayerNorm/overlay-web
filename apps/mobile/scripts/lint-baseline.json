@@ -1,7 +1,7 @@
 [
   {
     "path": "components/chat/DrawerSidebar.tsx",
-    "sha256": "309d14b1b0c8f5d70a650c6e9424ca29e9ca04301d72f282e0b41449436769f6",
+    "sha256": "dd70f9d2980376408223c013bda4e9c763628f7219ff50d1644f4f04c22e3789",
     "rules": {
       "react-hooks/set-state-in-effect": 2
     }

@@ -15,7 +15,7 @@ function load(file, mocks = {}, globals = {}) {
   vm.runInNewContext('(function(require,module,exports){' + output + '\n})', { console: { log() {}, error() {} }, Error, ...globals })(id => {
     if (Object.hasOwn(mocks, id)) return mocks[id]
     if (id.endsWith('.png')) return 1
-    if (id === '@overlay/chat-core') return { ...load('../packages/overlay-chat-core/src/visual-sequence.ts', mocks), ...load('../packages/overlay-chat-core/src/messages.ts', mocks) }
+    if (id === '@overlay/chat-core') return { ...load('../../packages/overlay-chat-core/src/visual-sequence.ts', mocks), ...load('../../packages/overlay-chat-core/src/messages.ts', mocks) }
     assert.ok(id.startsWith('.'), 'Unexpected dependency: ' + id)
     const target = path.resolve(path.dirname(filename), id)
     return load(fs.existsSync(target) ? target : fs.existsSync(target + '.ts') ? target + '.ts' : target + '.tsx', mocks)

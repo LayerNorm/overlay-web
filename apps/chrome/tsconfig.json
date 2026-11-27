@@ -17,10 +17,10 @@
     "jsx": "react-jsx",
     "types": ["chrome", "node"],
     "paths": {
-      "@overlay/chat-core": ["../packages/overlay-chat-core/src/index.ts"],
-      "@overlay/chat-core/*": ["../packages/overlay-chat-core/src/*"],
-      "@overlay/chat-react": ["../packages/overlay-chat-react/src/index.ts"],
-      "@overlay/chat-react/*": ["../packages/overlay-chat-react/src/*"],
+      "@overlay/chat-core": ["../../packages/overlay-chat-core/src/index.ts"],
+      "@overlay/chat-core/*": ["../../packages/overlay-chat-core/src/*"],
+      "@overlay/chat-react": ["../../packages/overlay-chat-react/src/index.ts"],
+      "@overlay/chat-react/*": ["../../packages/overlay-chat-react/src/*"],
       "@overlay/extension-contracts": ["./packages/overlay-extension-contracts/src/index.ts"],
       "@overlay/extension-contracts/*": ["./packages/overlay-extension-contracts/src/*"]
     }

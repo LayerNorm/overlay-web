@@ -62,10 +62,14 @@ const TEST_ENV = {
   NEXT_TELEMETRY_DISABLED: '1',
 }
 
+const SEPARATELY_TESTED_APP = /^apps\/(?:desktop|mobile|chrome)\//
+
 function trackedTestFiles() {
   const tracked = execFileSync('git', ['ls-files', '-z'], { cwd: root, encoding: 'utf8' })
     .split('\0')
     .filter((file) => TEST_FILE.test(file))
+    // Desktop, mobile and the Chrome extension run their own suites in their own workflows.
+    .filter((file) => !SEPARATELY_TESTED_APP.test(file))
     .sort()
   for (const file of INTEGRATION_TESTS) {
     if (!tracked.includes(file)) throw new Error(`Stale integration test path: ${file}`)

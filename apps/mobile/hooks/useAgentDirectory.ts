@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api, subscribeConvex } from '../services/convexClient'
 import type { FunctionReturnType } from 'convex/server'
-import { agentsForMode } from '../../src/shared/agents/last-agent-by-workspace'
-import { pinChiefs } from '../../src/shared/agents/chief-identity'
+import { agentsForMode } from '../../../src/shared/agents/last-agent-by-workspace'
+import { pinChiefs } from '../../../src/shared/agents/chief-identity'
 import type { AppMode } from '../contexts/ModeContext'
 
 export type DirectoryAgent = NonNullable<FunctionReturnType<typeof api.agents.directory.list>>['agents'][number]

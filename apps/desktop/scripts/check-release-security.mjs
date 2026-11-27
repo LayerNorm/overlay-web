@@ -15,7 +15,7 @@ const rejectText = (source, text, message) => {
 const packageJson = JSON.parse(read('package.json'))
 const builder = read('electron-builder.yml')
 const entitlements = read('build/entitlements.mac.plist')
-const workflow = read('.github/workflows/release-mac.yml')
+const workflow = read('../../.github/workflows/desktop-release.yml')
 const updater = read('src/main/services/desktop-runtime.ts')
 const sentryMain = read('src/main/services/sentry.ts')
 const securityService = read('src/main/services/security/security-service.ts')

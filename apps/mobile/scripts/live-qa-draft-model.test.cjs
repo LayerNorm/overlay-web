@@ -33,7 +33,7 @@ function storage() {
   let failure = false
   const service = loadCode(fs.readFileSync(path.join(root, 'services/chatStorage.ts'), 'utf8'), {
     '@react-native-async-storage/async-storage': {}, '@overlay/chat-core': {},
-    './appApi': {}, '../../src/shared/chat/public-stream-projection': {}, './convexPagination': { queryAllPages: async () => [] }, '../lib/agentThread': {},
+    './appApi': {}, '../../../src/shared/chat/public-stream-projection': {}, './convexPagination': { queryAllPages: async () => [] }, '../lib/agentThread': {},
     '../lib/toNativeChatMessage': loadNativeChatMessageMapper(),
     './chatTypes': { generateChatId: () => 'chat-generated' },
     './convexClient': {

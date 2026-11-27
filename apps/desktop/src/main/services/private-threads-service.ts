@@ -11,7 +11,7 @@ import {
   type LocalModelKeys,
   type LocalModelProvider,
   type Results
-} from '../../../packages/overlay-desktop-bridge/src/index'
+} from '@overlay/desktop-bridge'
 import { emitDesktopEvent } from './desktop-events'
 import { resolveEmbeddedHostRuntime } from './embedded-host-config'
 import { createLocalHelperEnvironment } from './security/local-helper-process'

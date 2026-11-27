@@ -15,7 +15,7 @@ function load(file, dependencies = {}, globals = {}) {
   const loaded = { exports: {} }
   const requireMock = id => {
     if (Object.hasOwn(dependencies, id)) return dependencies[id]
-    if (id === '@overlay/chat-core') return load('../packages/overlay-chat-core/src/visual-sequence.ts')
+    if (id === '@overlay/chat-core') return load('../../packages/overlay-chat-core/src/visual-sequence.ts')
     assert.ok(id.startsWith('.'), 'Unexpected dependency: ' + id)
     const base = path.resolve(path.dirname(filename), id)
     return load(fs.existsSync(base) && fs.statSync(base).isFile() ? base : base + '.ts', dependencies, globals)
@@ -159,7 +159,7 @@ test('agent save errors read as plain language', () => {
 })
 
 test('agent editor reads are Convex projections and writes retain web endpoints', async () => {
-  const contract = load('../packages/overlay-workspace-contracts/src/types.ts')
+  const contract = load('../../packages/overlay-workspace-contracts/src/types.ts')
   let result, failure
   const calls = []
   const api = load('services/agentsService.ts', {

@@ -57,7 +57,7 @@ import {
   WORK_STATUS_LABELS,
   type WorkFilter,
 } from '../../lib/work'
-import { columnsByStatus, sortByRank } from '../../../src/shared/work/query'
+import { columnsByStatus, sortByRank } from '../../../../src/shared/work/query'
 import { hapticImpact } from '../../lib/haptics'
 import { IconButton, T } from '../shell/primitives'
 import { AgentAvatar } from '../shell/AgentAvatar'
@@ -65,7 +65,7 @@ import { CreatureEmpty } from '../creatures/CreatureEmpty'
 import { NativeSegmented } from '../navigation/NativeSegmented'
 import { WorkTimeline } from './WorkTimeline'
 import { useTheme } from '../../hooks/useTheme'
-import { validateWorkDates } from '../../../src/shared/work/status'
+import { validateWorkDates } from '../../../../src/shared/work/status'
 import {
   secondary,
   WorkAssigneePicker,

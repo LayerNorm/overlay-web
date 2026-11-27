@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { DOMProps } from 'expo/dom'
-import { MarkdownMessage } from '../../../packages/overlay-chat-react/src/components/MarkdownMessage'
+import { MarkdownMessage } from '../../../../packages/overlay-chat-react/src/components/MarkdownMessage'
 import type { SharedMarkdownSnapshot } from '../../lib/sharedMarkdownBridge'
 import {
   selectionNeedsReconstruction,

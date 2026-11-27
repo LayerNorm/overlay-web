@@ -14,10 +14,13 @@ export default defineConfig({
         }
       }
     ],
+    // The shared bridge is linked from the monorepo's packages/ folder; resolve its zod from this app.
+    resolve: { dedupe: ['zod'] },
     build: { rollupOptions: { input: resolve('src/main/index.ts') } }
   },
   preload: {
     plugins: [externalizeDepsPlugin({ exclude: ['@overlay/desktop-bridge', 'zod'] })],
+    resolve: { dedupe: ['zod'] },
     build: {
       rollupOptions: {
         input: {

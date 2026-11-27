@@ -1,15 +1,15 @@
-import { getDraftFromToolBlock } from '../../packages/overlay-chat-core/src/messages'
-import { generatedUiDataToPlainText, normalizeGeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
+import { getDraftFromToolBlock } from '../../../packages/overlay-chat-core/src/messages'
+import { generatedUiDataToPlainText, normalizeGeneratedUiData } from '../../../packages/overlay-chat-core/src/generated-ui'
 import { collectWebSourcesFromBlocks } from '@overlay/chat-core'
-import type { GeneratedUiData } from '../../packages/overlay-chat-core/src/generated-ui'
-import type { AssistantVisualBlock } from '../../packages/overlay-chat-core/src/types'
+import type { GeneratedUiData } from '../../../packages/overlay-chat-core/src/generated-ui'
+import type { AssistantVisualBlock } from '../../../packages/overlay-chat-core/src/types'
 import type {
   ChatTranscriptExchangeView,
   ChatTranscriptResponseView,
   ChatTranscriptSourceView,
   ChatTranscriptView,
-} from '../../packages/overlay-chat-core/src/transcript-view'
-import type { AutomationScheduleDraft, DraftModalState } from '../../packages/overlay-chat-core/src/types'
+} from '../../../packages/overlay-chat-core/src/transcript-view'
+import type { AutomationScheduleDraft, DraftModalState } from '../../../packages/overlay-chat-core/src/types'
 import { MAX_TRANSCRIPT_TEXT_LENGTH, type NativeTranscriptActionKind, type NativeTranscriptAsset } from './nativeChatTranscriptActions'
 import { validateNativeMarkdownLink } from './sharedMarkdownBridge'
 import { MAX_AUTOMATION_GRAPH_SOURCE_LENGTH, MAX_NATIVE_TRANSCRIPT_SOURCE_COUNT } from './nativeTranscriptLimits'

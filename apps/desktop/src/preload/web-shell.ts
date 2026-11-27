@@ -5,7 +5,7 @@ import {
   BRIDGE_EVENT,
   type DesktopBridge,
   type Events
-} from '../../packages/overlay-desktop-bridge/src/index'
+} from '@overlay/desktop-bridge'
 
 const originArg = process.argv.find((arg) => arg.startsWith('--overlay-origin='))
 const origin = originArg?.slice('--overlay-origin='.length)

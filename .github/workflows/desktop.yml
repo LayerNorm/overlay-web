@@ -1,5 +1,7 @@
-name: Clean public clone
+name: Desktop app
 
+# Checks apps/desktop from a clean checkout on macOS. Runs only when the desktop
+# app, the shared desktop bridge contract or this workflow changes.
 on:
   workflow_dispatch:
     inputs:
@@ -8,19 +10,34 @@ on:
         type: boolean
         default: false
   pull_request:
+    paths:
+      - apps/desktop/**
+      - packages/overlay-desktop-bridge/**
+      - scripts/ci/desktop-web-shell-boundary*.mjs
+      - .github/workflows/desktop.yml
   push:
     branches:
       - main
+    paths:
+      - apps/desktop/**
+      - packages/overlay-desktop-bridge/**
+      - scripts/ci/desktop-web-shell-boundary*.mjs
+      - .github/workflows/desktop.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: clean-clone-${{ github.ref }}
+  group: desktop-${{ github.ref }}
   cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/desktop
 
 jobs:
   verify:
+    name: Desktop lint, test, build and package
     # Actual Core ML acceptance uses the current macOS generation. Keep the
     # ordinary compilation/interaction lane on the older supported image.
     runs-on: ${{ inputs.local_transcription == true && 'macos-26' || 'macos-15' }}
@@ -31,14 +48,20 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # Generated mockup pages are never part of the desktop app.
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
 
       - name: Setup Node
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: '22'
           cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
 
-      - name: Install from the authoritative lockfile
+      - name: Install from the desktop lockfile
         run: npm ci
 
       - name: Verify public source boundaries
@@ -81,7 +104,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-web-shell-build
-          path: out/
+          path: apps/desktop/out/
           retention-days: 7
           if-no-files-found: error
 
@@ -90,6 +113,6 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-interaction-evidence
-          path: test-results/
+          path: apps/desktop/test-results/
           retention-days: 7
           if-no-files-found: ignore

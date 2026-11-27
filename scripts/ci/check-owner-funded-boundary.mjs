@@ -36,8 +36,8 @@ if (
 for (const retired of [
   'src/server/jobs/postgres-runtime.ts',
   'src/server/knowledge/PostgresKnowledgeSearchRepository.ts',
-  'overlay-desktop/src/main/services/subscription-service.ts',
-  'overlay-desktop/src/main/services/security/usage-tracking-service.ts',
+  'apps/desktop/src/main/services/subscription-service.ts',
+  'apps/desktop/src/main/services/security/usage-tracking-service.ts',
 ]) {
   if (existsSync(retired)) failures.push(`${retired}: retired billing implementation returned`)
 }
@@ -48,7 +48,7 @@ function nativeSources(directory) {
     return entry.isDirectory() ? nativeSources(path) : path.endsWith('.ts') ? [path] : []
   })
 }
-for (const path of nativeSources('overlay-desktop/src/main')) {
+for (const path of nativeSources('apps/desktop/src/main')) {
   if (readFileSync(path, 'utf8').includes('platform/usage:recordBatch'))
     failures.push(`${path}: desktop still writes client-calculated usage to the authoritative ledger`)
 }

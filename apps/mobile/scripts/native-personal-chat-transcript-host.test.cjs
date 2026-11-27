@@ -6,8 +6,8 @@ const assert = require('node:assert/strict')
 const Module = require('node:module')
 const test = require('node:test')
 const vm = require('node:vm')
-const React = require('../../node_modules/react')
-const { act, create } = require('../../node_modules/react-test-renderer')
+const React = require('../../../node_modules/react')
+const { act, create } = require('../../../node_modules/react-test-renderer')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
@@ -156,7 +156,7 @@ Module._load = function loadNativeHostMocks(request, parent, isMain) {
   if (request === 'expo-sharing') return expoSharing
   if (request === 'expo-web-browser') return expoWebBrowser
   if (request === 'react' && parent?.filename.endsWith('/NativePersonalChatTranscript.tsx')) return React
-  if (request === 'react/jsx-runtime' && parent?.filename.endsWith('/NativePersonalChatTranscript.tsx')) return require('../../node_modules/react/jsx-runtime')
+  if (request === 'react/jsx-runtime' && parent?.filename.endsWith('/NativePersonalChatTranscript.tsx')) return require('../../../node_modules/react/jsx-runtime')
   if (parent?.filename.endsWith('/NativePersonalChatTranscript.tsx')) {
     if (request === '../../hooks/useTheme') return { useTheme: () => ({ theme, isDark: true }) }
     if (request === './DraftReviewSheet') return { DraftReviewSheet: MockDraftReviewSheet }

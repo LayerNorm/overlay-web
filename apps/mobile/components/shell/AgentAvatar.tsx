@@ -4,7 +4,7 @@ import {
   creatureEyeColor,
   normalizeCreatureShape,
   themeCreatureFills,
-} from '../../../src/shared/agents/agent-creature'
+} from '../../../../src/shared/agents/agent-creature'
 import { OverlayMark } from './Brand'
 import { useAgentEyes } from '../../hooks/useAgentEyes'
 

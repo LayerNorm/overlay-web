@@ -33,15 +33,15 @@ export default defineConfig({
     alias: [
       {
         find: /^@overlay\/chat-react$/,
-        replacement: resolve(rootDir, '../packages/overlay-chat-react/src/index.ts'),
+        replacement: resolve(rootDir, '../../packages/overlay-chat-react/src/index.ts'),
       },
       {
         find: /^@overlay\/chat-react\/styles\.css$/,
-        replacement: resolve(rootDir, '../packages/overlay-chat-react/src/styles/overlay-theme.css'),
+        replacement: resolve(rootDir, '../../packages/overlay-chat-react/src/styles/overlay-theme.css'),
       },
       {
         find: /^@overlay\/chat-core$/,
-        replacement: resolve(rootDir, '../packages/overlay-chat-core/src/index.ts'),
+        replacement: resolve(rootDir, '../../packages/overlay-chat-core/src/index.ts'),
       },
       {
         find: '@overlay/extension-contracts',

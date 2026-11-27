@@ -193,7 +193,7 @@ test('default agent identity uses the record flag, never the agent name', () => 
   const { AgentAvatar } = load('components/shell/AgentAvatar.tsx', {
     react: { default: { createElement } },
     'react-native-svg': { default: svg, Circle: 'Circle', G: 'G', Path: 'Path', Rect: 'Rect' },
-    '../../../src/shared/agents/agent-creature': {
+    '../../../../src/shared/agents/agent-creature': {
       creatureEyeColor: () => '#000000',
       normalizeCreatureShape: (shape) => shape ?? 'circle',
       themeCreatureFills: (color) => ({ light: color, dark: color }),

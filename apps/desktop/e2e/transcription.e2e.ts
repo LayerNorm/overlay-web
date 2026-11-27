@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import type { DesktopBridge } from '../packages/overlay-desktop-bridge/src/index'
+import type { DesktopBridge } from '@overlay/desktop-bridge'
 
 test('a pinned local model transcribes synthetic speech through the native bridge', async () => {
   test.setTimeout(15 * 60_000)

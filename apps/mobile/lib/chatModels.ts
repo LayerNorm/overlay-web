@@ -1,5 +1,5 @@
 import type { ChatModel } from '@overlay/app-core'
-import { CHAT_MODEL_QUALITY_PRIORITY } from '../../packages/overlay-llm-gateway/src/model-sorting'
+import { CHAT_MODEL_QUALITY_PRIORITY } from '../../../packages/overlay-llm-gateway/src/model-sorting'
 
 export type ModelItem = Pick<ChatModel, 'id' | 'name' | 'provider'> & Partial<ChatModel>
 

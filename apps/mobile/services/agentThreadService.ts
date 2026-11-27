@@ -2,13 +2,13 @@ import type { FunctionReturnType } from 'convex/server'
 import { api, mutateConvex, subscribeConvex, type Id } from './convexClient'
 import { mobileOverlayAppClient } from './overlayClient'
 import { getRequestWorkspaceId } from './appApi'
-import type { NativeAgentApproval } from '../../src/shared/agents/native-agent-approval'
-import type { NativeAgentInput } from '../../src/shared/agents/native-agent-input'
+import type { NativeAgentApproval } from '../../../src/shared/agents/native-agent-approval'
+import type { NativeAgentInput } from '../../../src/shared/agents/native-agent-input'
 import type { RoomMessageRecord } from '../lib/roomMessages'
 import {
   projectActivePublicStreams,
   type ActivePublicStreamSnapshot,
-} from '../../src/shared/chat/public-stream-projection'
+} from '../../../src/shared/chat/public-stream-projection'
 
 export type AgentRecord = NonNullable<
   FunctionReturnType<typeof api.agents.directory.get>

@@ -1,4 +1,4 @@
 provider: github
 owner: LayerNorm
-repo: overlay-desktop
+repo: overlay
 updaterCacheDirName: overlay-updater

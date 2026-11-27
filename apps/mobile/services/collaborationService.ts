@@ -8,7 +8,7 @@ import { mobileOverlayAppClient } from './overlayClient'
 import { api, convexWorkspaceId, mutateConvex, queryConvex, subscribeConvex, type Id } from './convexClient'
 import type { RoomMessageRecord } from '../lib/roomMessages'
 import { filterNotifications } from '../lib/activity'
-import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../src/shared/chat/public-stream-projection'
+import { projectActivePublicStreams, type ActivePublicStreamSnapshot } from '../../../src/shared/chat/public-stream-projection'
 
 export const COLLABORATION_NATIVE_READY = true
 export type NativeRoomState = NonNullable<FunctionReturnType<typeof api.collaboration.rooms.state>>

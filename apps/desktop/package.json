@@ -2,17 +2,15 @@
   "name": "overlay-desktop",
   "version": "0.6.0",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
   "license": "AGPL-3.0-or-later",
   "description": "overlay - personal computing, reimagined",
   "main": "./out/main/index.js",
   "author": "DevelopedByDev",
-  "homepage": "https://github.com/LayerNorm/overlay-desktop",
+  "homepage": "https://github.com/LayerNorm/overlay/tree/main/apps/desktop",
   "repository": {
     "type": "git",
-    "url": "https://github.com/LayerNorm/overlay-desktop.git"
+    "url": "https://github.com/LayerNorm/overlay.git",
+    "directory": "apps/desktop"
   },
   "scripts": {
     "format": "prettier --write .",
@@ -45,7 +43,7 @@
     "security:verify:source": "npm run check:public-source-secrets && npm run check:no-provider-sdks && npm run check:release-security && npm run check:dependencies:prod && npm test"
   },
   "dependencies": {
-    "@overlay/desktop-bridge": "0.0.1",
+    "@overlay/desktop-bridge": "file:../../packages/overlay-desktop-bridge",
     "@sentry/electron": "7.15.0",
     "axios": "1.21.0",
     "dotenv": "^17.2.3",

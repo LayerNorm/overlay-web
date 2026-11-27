@@ -7,9 +7,9 @@ const assert = require('node:assert/strict')
 const test = require('node:test')
 const fs = require('node:fs')
 const path = require('node:path')
-const React = require('../../node_modules/react')
-const { renderToStaticMarkup } = require('../../node_modules/react-dom/server')
-const { MarkdownMessage } = require('../../packages/overlay-chat-react/src/components/MarkdownMessage.tsx')
+const React = require('../../../node_modules/react')
+const { renderToStaticMarkup } = require('../../../node_modules/react-dom/server')
+const { MarkdownMessage } = require('../../../packages/overlay-chat-react/src/components/MarkdownMessage.tsx')
 const {
   selectionNeedsReconstruction,
   textPointAtOffset,
@@ -183,7 +183,7 @@ test('offline CSS verification rejects remote imports and missing local targets'
 })
 
 test('Metro resolves the pinned Shiki lazy graph from the shared workspace', () => {
-  const workspaceRoot = path.resolve(projectRoot, '..')
+  const workspaceRoot = path.resolve(projectRoot, '../..')
   const requests = [
     ['./node_modules/shiki/dist/core', 'shiki/dist/core.mjs'],
     ['./node_modules/shiki/dist/engine-javascript', 'shiki/dist/engine-javascript.mjs'],

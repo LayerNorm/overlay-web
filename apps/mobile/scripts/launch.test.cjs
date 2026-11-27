@@ -32,12 +32,14 @@ test('incoming workspace activation handles current, missing, valid and denied d
     /Denied/,
   )
 })
-test('EAS workspace preparation uses the existing parent and the same pin as CI', () => {
-  const { prepareWorkspace, WEB_REVISION } = require('./prepare-eas-workspace.cjs')
-  assert.equal(prepareWorkspace(root), undefined)
-  assert.ok(
-    fs.readFileSync(path.join(root, '.github/workflows/mobile.yml'), 'utf8').includes(WEB_REVISION),
-  )
+test('EAS workspace preparation uses the monorepo root and installs it only once', () => {
+  const { prepareWorkspace, repositoryRoot } = require('./prepare-eas-workspace.cjs')
+  assert.equal(repositoryRoot(root), path.resolve(root, '../..'))
+  const calls = []
+  const installed = prepareWorkspace(root, (...args) => calls.push(args))
+  if (installed) assert.deepEqual(calls[0].slice(0, 2), ['npm', ['ci', '--no-audit', '--no-fund']])
+  else assert.deepEqual(calls, [])
+  assert.throws(() => prepareWorkspace(path.join(root, 'scripts')), /inside the Overlay monorepo/)
 })
 test('universal and custom links use existing native destinations', () => {
   for (const route of [

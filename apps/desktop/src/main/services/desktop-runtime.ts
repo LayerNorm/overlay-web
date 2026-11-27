@@ -26,7 +26,7 @@ import {
   type Input,
   type Results,
   type UpdateStatus
-} from '../../../packages/overlay-desktop-bridge/src/index'
+} from '@overlay/desktop-bridge'
 import {
   getWebShellOrigin,
   startWebShellSignIn,

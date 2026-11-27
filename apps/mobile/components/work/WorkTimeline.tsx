@@ -8,8 +8,8 @@ import {
   formatWorkDate,
   formatWorkDateRange,
   startOfWeek,
-} from '../../../src/shared/work/dates'
-import { barLayout, buildTimelineRows, dependencyArrow } from '../../../src/shared/work/timeline'
+} from '../../../../src/shared/work/dates'
+import { barLayout, buildTimelineRows, dependencyArrow } from '../../../../src/shared/work/timeline'
 import { WORK_STATUS_LABELS } from '../../lib/work'
 import type { Theme } from '../../constants/theme'
 import { Button, IconButton, T } from '../shell/primitives'

@@ -9,7 +9,7 @@ import {
   type ElectronApplication,
   type Page
 } from '@playwright/test'
-import type { DesktopBridge } from '../packages/overlay-desktop-bridge/src/index'
+import type { DesktopBridge } from '@overlay/desktop-bridge'
 
 declare global {
   interface Window {

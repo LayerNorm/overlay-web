@@ -1,15 +1,12 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
 const fs = require('node:fs')
 const path = require('node:path')
-const { execFileSync, spawnSync } = require('node:child_process')
 const { pathToFileURL } = require('node:url')
 
 const appRoot = path.resolve(__dirname, '..')
 const inputPath = path.join(appRoot, 'assets/shared-markdown.input.css')
 const outputPath = path.join(appRoot, 'assets/shared-markdown.generated.css')
 const katexOutputPath = path.join(appRoot, 'assets/shared-markdown-katex.generated.css')
-const prepareScript = fs.readFileSync(path.join(appRoot, 'scripts/prepare-eas-workspace.cjs'), 'utf8')
-const revisionMatch = prepareScript.match(/const WEB_REVISION\s*=\s*['"]([a-f0-9]{40})['"]/)
 
 const URL_PATTERN = /url\(\s*(?:(['"])(.*?)\1|([^)]*?))\s*\)/gi
 const FONT_MIME_TYPES = {
@@ -90,47 +87,15 @@ function moveDarkThemeTokensAfterLightDefaults(postcss, css, inputPath) {
 }
 
 async function main() {
-  if (!revisionMatch) throw new Error('Could not read the EAS web revision pin')
-
-  const packageRoot = fs.realpathSync(path.join(appRoot, '../packages/overlay-chat-react'))
-  const webRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
-    cwd: packageRoot,
-    encoding: 'utf8',
-  }).trim()
-  const pin = revisionMatch[1]
-  const sourcePaths = [
-    'package.json',
-    'package-lock.json',
-    'packages/overlay-chat-react',
-    'packages/overlay-chat-core',
-    'packages/overlay-modules-react',
-    'packages/overlay-ui',
-  ]
-  const sourceStatus = execFileSync('git', ['status', '--porcelain', '--', ...sourcePaths], {
-    cwd: webRoot,
-    encoding: 'utf8',
-  }).trim()
-  if (sourceStatus) throw new Error(`Pinned shared Markdown sources have local changes:\n${sourceStatus}`)
-
-  const sourceDiff = spawnSync('git', ['diff', '--quiet', pin, 'HEAD', '--', ...sourcePaths], {
-    cwd: webRoot,
-    encoding: 'utf8',
-  })
-  if (sourceDiff.status !== 0) {
-    throw new Error(`Shared Markdown sources differ from EAS web pin ${pin}`)
-  }
-
-  const chatTree = execFileSync('git', ['rev-parse', `${pin}:packages/overlay-chat-react`], {
-    cwd: webRoot,
-    encoding: 'utf8',
-  }).trim()
+  // Built from the monorepo's current shared packages, the same sources web ships.
+  const webRoot = path.resolve(appRoot, '../..')
   const postcssPath = path.join(webRoot, 'node_modules/postcss')
   const tailwindPath = path.join(webRoot, 'node_modules/@tailwindcss/postcss/dist/index.mjs')
   const tailwindPackage = JSON.parse(fs.readFileSync(path.join(webRoot, 'node_modules/@tailwindcss/postcss/package.json'), 'utf8'))
   const katexPackage = JSON.parse(fs.readFileSync(path.join(webRoot, 'node_modules/katex/package.json'), 'utf8'))
   const webLock = JSON.parse(fs.readFileSync(path.join(webRoot, 'package-lock.json'), 'utf8'))
   if (webLock.packages?.['node_modules/katex']?.version !== katexPackage.version) {
-    throw new Error('Installed KaTeX version does not match the pinned web lockfile')
+    throw new Error('Installed KaTeX version does not match the monorepo lockfile')
   }
   const postcss = require(postcssPath)
   const tailwind = (await import(pathToFileURL(tailwindPath).href)).default
@@ -172,7 +137,7 @@ async function main() {
   fs.writeFileSync(outputPath, localFonts.css)
   fs.writeFileSync(katexOutputPath, katex.css)
   const verification = require('./verify-shared-markdown-assets.cjs').verifySourceStylesheets({ appRoot })
-  console.log(`Shared Markdown CSS built from EAS pin ${pin} (chat-react tree ${chatTree}).`)
+  console.log('Shared Markdown CSS built from the monorepo shared packages.')
   console.log(`Tailwind ${tailwindPackage.version}; KaTeX ${katexPackage.version}; embedded ${localFonts.count} local fonts and ${katex.fontFaceCount} KaTeX WOFF2 fonts.`)
   console.log(`Verified ${verification.urlCount} CSS URLs; no remote imports or unresolved local targets.`)
   console.log(`Wrote ${path.relative(appRoot, outputPath)} (${Buffer.byteLength(localFonts.css)} bytes).`)

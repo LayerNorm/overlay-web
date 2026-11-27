@@ -5,8 +5,8 @@ require('tsx/cjs')
 const assert = require('node:assert/strict')
 const Module = require('node:module')
 const test = require('node:test')
-const React = require('../../node_modules/react')
-const { act, create } = require('../../node_modules/react-test-renderer')
+const React = require('../../../node_modules/react')
+const { act, create } = require('../../../node_modules/react-test-renderer')
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
