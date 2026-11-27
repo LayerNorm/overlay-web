@@ -26,6 +26,7 @@ import type { InlineNavItem } from '@overlay/shell-react'
 import { MARKETING_DOCS_URL } from '@/shared/marketing/marketing'
 import { AccountMenuActions } from './sidebar/AccountMenuActions'
 import { BugReportDialog } from './sidebar/BugReportDialog'
+import { OnboardingChecklist } from '@/app/_components/onboarding/OnboardingChecklist'
 
 const GlobalSearchDialog = dynamic(() => import('./GlobalSearchDialog').then((mod) => ({ default: mod.GlobalSearchDialog })))
 const WORK_SECTION_ORDER: readonly WorkFilter[] = ['needs-you', 'mine', 'all']
@@ -220,8 +221,16 @@ export default function AppSidebar({
     />
   )
 
+  const onboardingChecklist = (expanded: boolean) => (
+    <OnboardingChecklist
+      workspaceId={s.activeWorkspaceId ?? null}
+      expanded={expanded}
+      buildHref={(href) => (s.activeWorkspaceId ? s.buildWorkspaceHref(s.activeWorkspaceId, href) : href)}
+      navigate={(href) => s.router.push(href)}
+    />
+  )
   const desktopAccountSlot = (
-    <DesktopAccountSlot
+    <>{onboardingChecklist(railExpanded)}<DesktopAccountSlot
       menuRef={s.menuRef}
       isGuestConfirmed={s.isGuestConfirmed}
       workspace={workspace}
@@ -233,7 +242,7 @@ export default function AppSidebar({
       accountMenu={accountMenuContent}
       userAvatar={userAvatar}
       onSignIn={() => s.requireAuth('send')}
-    />
+    /></>
   )
   const mobileAccountSlot = (
     <DesktopAccountSlot

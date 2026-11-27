@@ -25,6 +25,7 @@ import styles from "./onboarding.module.css";
 import { agentThreadHref } from "@/components/layout/sidebar-nav";
 import { trackOnboarding } from "./onboarding-analytics";
 import { OnboardingPlanGate } from "./OnboardingPlanChoice";
+import { enableChecklist } from "./onboarding-checklist-state";
 import { useLiveWorkTask } from "@/features/work/lib/use-live-work";
 
 const OnboardingConversation = dynamic(
@@ -151,6 +152,7 @@ function AuthenticatedOnboardingShell({
     if (done?.flowVersion === 4 && done.taskId && done.taskConversationId) {
       // Flow 4 opens the thread the first task runs in: Personal chief when solo, Overlay with a team.
       const scope = done.taskAgentId && done.taskAgentId !== done.agentId ? "personal" : "workspace";
+      enableChecklist(workspaceId);
       setActive(false);
       setResult(next);
       router.push(agentThreadHref(buildWorkspaceHref(workspaceId, "/app/agents", scope), done.taskAgentId ?? done.agentId, done.taskConversationId, scope));
