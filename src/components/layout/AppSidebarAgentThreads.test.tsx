@@ -123,8 +123,8 @@ test('threads without activity retain alignment without showing a status icon', 
 
 test('thread pull requests expose lifecycle icons without stealing the thread action', () => {
   const html = render({ ...bundle, threads: [{ ...bundle.threads[0]!, pullRequests: [
-    { owner: 'LayerNorm', repo: 'overlay-web', number: 12, title: 'UI', url: 'https://github.com/LayerNorm/overlay-web/pull/12', state: 'draft', observedAt: 1 },
-    { owner: 'LayerNorm', repo: 'overlay-web', number: 13, title: 'Fix', url: 'https://github.com/LayerNorm/overlay-web/pull/13', state: 'merged', observedAt: 1 },
+    { owner: 'LayerNorm', repo: 'overlay-web', number: 12, title: 'UI', url: 'https://github.com/LayerNorm/overlay/pull/12', state: 'draft', observedAt: 1 },
+    { owner: 'LayerNorm', repo: 'overlay-web', number: 13, title: 'Fix', url: 'https://github.com/LayerNorm/overlay/pull/13', state: 'merged', observedAt: 1 },
   ] }] })
   assert.match(html, /Pull requests: 1 draft, 1 merged/)
   assert.match(html, /lucide-git-pull-request-draft/)

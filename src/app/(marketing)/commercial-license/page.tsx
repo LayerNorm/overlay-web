@@ -18,5 +18,5 @@ const sections = [
 ]
 
 export default function CommercialLicensePage() {
-  return <LegalPageTemplate label="Licensing" title="Commercial Licensing" updated={LEGAL_EFFECTIVE_DATE} intro="Organizations that need terms outside AGPL-3.0-only can request a separate paid commercial agreement from LayerNorm." sections={sections} crossLink={{ href: 'https://github.com/LayerNorm/overlay-web', label: 'open-source repository' }} />
+  return <LegalPageTemplate label="Licensing" title="Commercial Licensing" updated={LEGAL_EFFECTIVE_DATE} intro="Organizations that need terms outside AGPL-3.0-only can request a separate paid commercial agreement from LayerNorm." sections={sections} crossLink={{ href: 'https://github.com/LayerNorm/overlay', label: 'open-source repository' }} />
 }

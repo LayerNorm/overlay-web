@@ -142,10 +142,10 @@ test('person chips lead with the photo or initial and agent chips with a creatur
 })
 
 test('a link chip shows a short label and sends the raw address', () => {
-  const href = 'https://www.github.com/LayerNorm/overlay-web/pull/548?diff=split#files'
+  const href = 'https://www.github.com/LayerNorm/overlay/pull/548?diff=split#files'
   const chip = createLinkChip(href) as unknown as FakeElement
   assert.equal(chip.getAttribute(LINK_CHIP_ATTR), href)
-  assert.equal(chip.textContent, 'github.com/LayerNorm/overlay-web/…')
+  assert.equal(chip.textContent, 'github.com/LayerNorm/overlay/…')
   assert.equal(composerLinkLabel('https://example.com/'), 'example.com')
   assert.equal(serialise(text('see '), chip, text(' now')), `see ${href} now`)
 })
@@ -164,7 +164,7 @@ test('addresses and known mentions in plain text are split into chips', () => {
 })
 
 test('a restored plain-text draft is rebuilt as chips that send the same text', () => {
-  const draft = '@Atlas can you check https://github.com/LayerNorm/overlay-web/pull/548 with @Sam Okafor before launch?'
+  const draft = '@Atlas can you check https://github.com/LayerNorm/overlay/pull/548 with @Sam Okafor before launch?'
   const nodes = buildComposerChipNodes(draft, [SAM, ATLAS]) as unknown as FakeElement[]
   assert.deepEqual(nodes.map((node) => (node.nodeType === 3 ? 'text' : node.getAttribute(LINK_CHIP_ATTR) ? 'link' : 'mention')), [
     'mention', 'text', 'link', 'text', 'mention', 'text',

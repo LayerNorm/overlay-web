@@ -56,7 +56,7 @@ const structuredData = {
       applicationSubCategory: 'AI agent platform',
       license: 'https://www.gnu.org/licenses/agpl-3.0.html',
       isAccessibleForFree: true,
-      sameAs: ['https://github.com/LayerNorm/overlay-web'],
+      sameAs: ['https://github.com/LayerNorm/overlay'],
       keywords:
         'AI employees, control plane for AI agents, open-source Devin alternative, multi-agent workspace, connected computers, self-hosted AI agents',
       description:

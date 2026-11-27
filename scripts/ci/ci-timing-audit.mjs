@@ -24,7 +24,7 @@ const option = (name, fallback) => {
   const index = args.indexOf(name)
   return index >= 0 && args[index + 1] ? args[index + 1] : fallback
 }
-const repo = option('--repo', 'LayerNorm/overlay-web')
+const repo = option('--repo', 'LayerNorm/overlay')
 const workflow = option('--workflow', 'security.yml')
 const wanted = Number(option('--runs', '150'))
 const branch = option('--branch', '')

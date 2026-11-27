@@ -38,9 +38,7 @@ defaults:
 jobs:
   verify:
     name: Desktop lint, test, build and package
-    # Actual Core ML acceptance uses the current macOS generation. Keep the
-    # ordinary compilation/interaction lane on the older supported image.
-    runs-on: ${{ inputs.local_transcription == true && 'macos-26' || 'macos-15' }}
+    runs-on: macos-15
     timeout-minutes: 45
 
     steps:
@@ -82,10 +80,6 @@ jobs:
       - name: Exercise the sandboxed Electron bridge
         run: npx playwright test e2e/bridge.e2e.ts e2e/migration.e2e.ts e2e/recorder.e2e.ts
 
-      - name: Transcribe synthetic speech with a pinned local model
-        if: ${{ inputs.local_transcription == true }}
-        run: npx playwright test e2e/transcription.e2e.ts
-
       - name: Package an unsigned Apple Silicon app
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
@@ -116,3 +110,33 @@ jobs:
           path: apps/desktop/test-results/
           retention-days: 7
           if-no-files-found: ignore
+
+  local-transcription:
+    name: Desktop local-model transcription smoke
+    # Actual Core ML acceptance uses the current macOS generation; the ordinary
+    # lane stays on the older supported image. Runs only when requested.
+    if: ${{ inputs.local_transcription == true }}
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: |
+            /*
+            !/internal/plans/**/*.html
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/desktop/package-lock.json
+
+      - name: Install, build and transcribe synthetic speech with a pinned local model
+        run: |
+          npm ci
+          npm run build
+          npx playwright test e2e/transcription.e2e.ts

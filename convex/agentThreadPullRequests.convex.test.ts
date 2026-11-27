@@ -92,7 +92,7 @@ test('server-authorized agent tool output appears only in the caller-owned threa
     output: {
       structuredContent: {
         number: 42,
-        html_url: 'https://github.com/LayerNorm/overlay-web/pull/42',
+        html_url: 'https://github.com/LayerNorm/overlay/pull/42',
         title: 'Backend PR association',
         state: 'open',
         draft: false,
@@ -111,7 +111,7 @@ test('server-authorized agent tool output appears only in the caller-owned threa
       repo: 'overlay-web',
       number: 42,
       title: 'Backend PR association',
-      url: 'https://github.com/LayerNorm/overlay-web/pull/42',
+      url: 'https://github.com/LayerNorm/overlay/pull/42',
       state: 'open',
     }])
 

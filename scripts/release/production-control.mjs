@@ -24,7 +24,7 @@ export async function verifyProductionProject(vercel) {
   assert.ok(p.id === PRODUCTION.projectId && p.name === PRODUCTION.projectName
     && p.accountId === PRODUCTION.teamId && p.link?.type === 'github'
     && Number(p.link.repoId) === PRODUCTION.repositoryId && p.link.org === 'LayerNorm'
-    && p.link.repo === 'overlay-web' && p.link.productionBranch === 'main', 'Wrong production project or owner')
+    && p.link.repo === 'overlay' && p.link.productionBranch === 'main', 'Wrong production project or owner')
   return p
 }
 

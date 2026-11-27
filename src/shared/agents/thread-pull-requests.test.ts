@@ -255,7 +255,7 @@ test('uses authoritative merge input when the successful response only says merg
     repo: 'overlay-web',
     number: 51,
     title: 'Pull request #51',
-    url: 'https://github.com/LayerNorm/overlay-web/pull/51',
+    url: 'https://github.com/LayerNorm/overlay/pull/51',
     state: 'merged',
     observedAt: 100,
   })

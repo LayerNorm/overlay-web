@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    runs-on: macos-15
     # Signing secrets live only in this protected environment (not repo-wide).
     environment: mac-release
     permissions:
@@ -122,7 +122,7 @@ jobs:
   # Build job never receives write access; publish uses GITHUB_TOKEN only.
   publish-mac:
     needs: build-mac
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: release-publish
     permissions:
       contents: write

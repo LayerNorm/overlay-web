@@ -5,12 +5,12 @@
   "license": "AGPL-3.0-only",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/LayerNorm/overlay-web.git",
+    "url": "git+https://github.com/LayerNorm/overlay.git",
     "directory": "packages/overlay-agent-bridge-protocol"
   },
-  "homepage": "https://github.com/LayerNorm/overlay-web/tree/main/packages/overlay-agent-bridge-protocol#readme",
+  "homepage": "https://github.com/LayerNorm/overlay/tree/main/packages/overlay-agent-bridge-protocol#readme",
   "bugs": {
-    "url": "https://github.com/LayerNorm/overlay-web/issues"
+    "url": "https://github.com/LayerNorm/overlay/issues"
   },
   "type": "module",
   "sideEffects": false,
