@@ -15,7 +15,7 @@ import { PrivateThreadStore } from './private-threads-store'
 import type { PrivateEvent, PrivateTurnModel } from './private-threads-protocol'
 
 const owner = { userId: 'user-1', workspaceId: 'ws-1' }
-const proxy = { url: 'http://127.0.0.1:43123', key: 'ovlp_0123456789abcdef0123' }
+const proxy = { url: 'http://127.0.0.1:43123', key: 'test-local-proxy-placeholder' }
 const usage = { inputTokens: { total: 3, noCache: 3, cacheRead: 0, cacheWrite: 0 }, outputTokens: { total: 2, text: 2, reasoning: 0 } }
 const parts: LanguageModelV4StreamPart[] = [
   { type: 'stream-start', warnings: [] },
