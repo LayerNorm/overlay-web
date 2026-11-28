@@ -107,6 +107,14 @@ CLI must name the same version (`bun run verify:agent-host-release`, and
 `scripts/ci/desktop-web-shell-boundary.mjs` checks the desktop pin). Publish with
 the `publish-agent-host` workflow after `bun run check:local-computer:release`.
 
+The same package's `private` command, started by Overlay Desktop over IPC, runs
+private threads and the person's local (stdio) MCP servers for them
+(`private-threads.md`). Synced threads on This Mac don't get local MCP servers:
+their agent loop runs in Overlay, and the local tool channel carries only the
+computer tools. Overlay Desktop offers local servers only when its bundled host
+names the `overlay-private-local-mcp-servers` feature, so a desktop pin bump to a
+host release that has it is what turns them on.
+
 ## Removed third-party agent data
 
 `convex/migrations/purgeConnectedAgents.ts` deletes everything the removed

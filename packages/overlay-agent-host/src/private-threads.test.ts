@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 import type { LanguageModelV4StreamPart } from '@ai-sdk/provider'
 import { tool } from 'ai'
@@ -9,6 +10,7 @@ import { MockLanguageModelV4 } from 'ai/test'
 import { z } from 'zod'
 import { PrivateThreadService, withoutScreenshotImages } from './private-threads'
 import { privateComputerTools, SCREENSHOT_NOT_KEPT } from './private-threads-tools'
+import { LocalMcpServers } from './private-threads-local-mcp'
 import type { LocalToolExecutor } from './local-tools'
 import { PrivateThreadStore } from './private-threads-store'
 import type { PrivateEvent, PrivateUIMessage } from './private-threads-protocol'
@@ -208,6 +210,45 @@ test('a turn runs with this computer\'s tools when Overlay\'s are unavailable, a
     assert.equal(ended.kind === 'turn' && ended.state, 'finished')
     assert.equal(logs.length, 1)
     assert.ok(!logs[0]!.includes('secretvalue'))
+  } finally { await f.cleanup() }
+})
+
+test('tools of an MCP server on this computer join the turn, ask first, and stop with the host', async () => {
+  let instructions = ''
+  const model = new MockLanguageModelV4({
+    doStream: async ({ prompt }) => {
+      instructions = prompt.filter(message => message.role === 'system').map(message => String(message.content)).join('\n')
+      const sawResult = prompt.some(message => message.role === 'tool' && message.content.some(part => part.type === 'tool-result'))
+      const parts = sawResult ? reply('Greeted.') : toolCall('Fixture__greet', { name: 'Ada' })
+      return { stream: new ReadableStream({ start(c) { parts.forEach(p => c.enqueue(p)); c.close() } }) }
+    },
+  })
+  const localMcp = new LocalMcpServers()
+  const server = {
+    id: 'srv-1', name: 'Fixture', command: process.execPath,
+    args: [fileURLToPath(new URL('./fixtures/local-mcp-server.mjs', import.meta.url))], env: { FIXTURE_GREETING: 'Ahoy' },
+  }
+  const f = await fixture(model, { localMcp }, { localMcp: [server] })
+  try {
+    const asked = await f.send([f.user('Greet Ada')])
+    assert.equal(asked.kind === 'turn' && asked.state, 'finished')
+    assert.match(instructions, /MCP servers the person runs on this computer/)
+    let { messages } = await f.service.handle({ method: 'get', owner, threadId: 'p1' })
+    const pending = messages[1]!.parts.find(part => part.type === 'tool-Fixture__greet') as { state: string }
+    assert.equal(pending.state, 'approval-requested')
+
+    await f.service.handle({ method: 'delete', owner, threadId: 'p1' })
+    await f.service.handle({ method: 'create', owner, threadId: 'p1', agentId: 'agent-1', title: 'New thread', folder: f.base, model: null })
+    const ran = await f.send([f.user('Greet Ada')], 'auto')
+    assert.deepEqual(ran.kind === 'turn' && [ran.state, ran.error], ['finished', undefined])
+    ;({ messages } = await f.service.handle({ method: 'get', owner, threadId: 'p1' }))
+    const result = messages[1]!.parts.find(part => part.type === 'tool-Fixture__greet') as { state: string; output?: unknown }
+    assert.equal(result.state, 'output-available')
+    assert.match(JSON.stringify(result.output), /Ahoy, Ada/)
+    assert.deepEqual(localMcp.running(), ['srv-1'], 'the server stays up between turns')
+    assert.deepEqual((await f.service.handle({ method: 'mcpCheck', server })).tools.map(entry => entry.name), ['greet', 'pid'])
+    await f.service.shutdown()
+    assert.deepEqual(localMcp.running(), [])
   } finally { await f.cleanup() }
 })
 

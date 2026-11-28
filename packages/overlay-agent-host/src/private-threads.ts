@@ -10,6 +10,7 @@ import {
   isStepCount,
   readUIMessageStream,
   type LanguageModel,
+  type ToolSet,
   type UIMessageChunk,
 } from 'ai'
 import { LocalToolExecutor } from './local-tools.js'
@@ -22,6 +23,7 @@ import {
   summaryBoundary,
 } from './private-threads-context.js'
 import { connectOverlayTools, withOverlayTools, type OverlayToolsConnection } from './private-threads-overlay-tools.js'
+import { LocalMcpServers, type LocalMcpTurn } from './private-threads-local-mcp.js'
 import { privateComputerTools, SCREENSHOT_NOT_KEPT } from './private-threads-tools.js'
 import { PrivateThreadStore } from './private-threads-store.js'
 import {
@@ -52,6 +54,8 @@ export type PrivateThreadServiceOptions = {
   connectOverlayTools?: typeof connectOverlayTools
   /** Tests shrink the context window to exercise compaction. */
   contextWindow?: number
+  /** MCP servers on this computer; tests pass one with a fixture server or a fake connection. */
+  localMcp?: LocalMcpServers
   log?: (message: string) => void
 }
 
@@ -62,8 +66,11 @@ export type PrivateThreadServiceOptions = {
  */
 export class PrivateThreadService {
   private readonly runs = new Map<string, Run>()
+  private readonly localMcp: LocalMcpServers
 
-  constructor(private readonly options: PrivateThreadServiceOptions) {}
+  constructor(private readonly options: PrivateThreadServiceOptions) {
+    this.localMcp = options.localMcp ?? new LocalMcpServers({ log: options.log })
+  }
 
   async handle<M extends PrivateRequest['method']>(input: PrivateRequest & { method: M }): Promise<PrivateResults[M]> {
     const request = privateRequestSchema.parse(input)
@@ -120,6 +127,10 @@ export class PrivateThreadService {
       }
       case 'models':
         return { models: await (this.options.listModels ?? listProviderModels)(request.provider, request.apiKey) }
+      case 'mcpCheck':
+        return await this.localMcp.check(request.server)
+      case 'mcpStop':
+        return { stopped: await this.localMcp.stop(request.serverId) }
     }
   }
 
@@ -156,14 +167,18 @@ export class PrivateThreadService {
     })
     let failure: string | undefined
     let overlay: OverlayToolsConnection | null = null
+    let localMcp: LocalMcpTurn | null = null
     try {
-      overlay = await (this.options.connectOverlayTools ?? connectOverlayTools)(request.overlay, {
-        signal,
-        onUnavailable: (reason) => this.options.log?.(`Overlay tools unavailable for this turn: ${publicError(reason)}`),
-      })
+      ;[overlay, localMcp] = await Promise.all([
+        (this.options.connectOverlayTools ?? connectOverlayTools)(request.overlay, {
+          signal,
+          onUnavailable: (reason) => this.options.log?.(`Overlay tools unavailable for this turn: ${publicError(reason)}`),
+        }),
+        request.localMcp?.length ? this.localMcp.open(request.localMcp, { signal, approvalMode: request.approvalMode }) : null,
+      ])
       const model = (this.options.createModel ?? createModel)(request.model.provider, request.model.modelId, request.model.apiKey)
-      const instructions = instructionsFor(request, overlay)
-      const tools = withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay)
+      const instructions = instructionsFor(request, overlay, localMcp)
+      const tools = withLocalMcpTools(withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay), localMcp)
       const saved = this.options.store.summary(threadId)
       const agent = new ToolLoopAgent({
         model,
@@ -199,6 +214,7 @@ export class PrivateThreadService {
     } catch (error) {
       if (!signal.aborted) failure = publicError(error)
     } finally {
+      localMcp?.release()
       await Promise.all([executor.shutdown().catch(() => undefined), overlay?.close()])
     }
     emit({ kind: 'turn', threadId, turnId, state: signal.aborted ? 'stopped' : failure ? 'error' : 'finished', ...(failure ? { error: failure } : {}) })
@@ -234,6 +250,7 @@ export class PrivateThreadService {
   async shutdown(): Promise<void> {
     for (const run of this.runs.values()) run.controller.abort()
     await Promise.allSettled([...this.runs.values()].map(run => run.done))
+    await this.localMcp.shutdown()
   }
 }
 
@@ -246,7 +263,15 @@ export function createModel(provider: PrivateModelProvider, modelId: string, api
   }
 }
 
-function instructionsFor(request: SendRequest, overlay: OverlayToolsConnection | null): string {
+/** Local MCP tools are named `server__tool`, so they never take the name of a computer or Overlay tool. */
+function withLocalMcpTools(tools: ToolSet, localMcp: LocalMcpTurn | null): ToolSet {
+  if (!localMcp) return tools
+  const merged: ToolSet = { ...tools }
+  for (const [name, definition] of Object.entries(localMcp.tools)) if (!(name in merged)) merged[name] = definition
+  return merged
+}
+
+function instructionsFor(request: SendRequest, overlay: OverlayToolsConnection | null, localMcp: LocalMcpTurn | null): string {
   const os = platform() === 'darwin' ? 'macOS' : platform() === 'win32' ? 'Windows' : 'Linux'
   return [
     `You are ${request.agent.name}, an agent in Overlay.`,
@@ -259,6 +284,7 @@ function instructionsFor(request: SendRequest, overlay: OverlayToolsConnection |
       'Work step by step, check your results, and finish with a short summary of what you did.',
     ].join('\n'),
     overlay && Object.keys(overlay.tools).length > 0 ? overlay.instructions : '',
+    localMcp?.instructions ?? '',
   ].filter(Boolean).join('\n\n')
 }
 

@@ -1,6 +1,5 @@
-import { execFile } from 'node:child_process'
 import { createHash } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { app, session } from 'electron'
@@ -8,12 +7,15 @@ import type {
   Input,
   LocalModelKeys,
   LocalModelProvider,
+  LocalSetupApp,
   LocalSetupImportResult,
   LocalSetupScan
 } from '@overlay/desktop-bridge'
 import { instructionFacts, mcpAuth, resolveLocalSetupItem, scanLocalSetup, type ResolvedLocalSetupItem } from './local-setup'
 import { privateThreadsService } from './private-threads-service'
+import type { LocalMcpInput } from './local-mcp-servers'
 import { getWebShellOrigin, WEB_SHELL_PARTITION } from './web-shell'
+import { readLoginShellEnvironment } from './login-shell'
 
 /**
  * First-run setup on this computer: what other AI tools keep here, model keys in the login shell, and importing
@@ -27,31 +29,12 @@ const SHELL_KEY_VARIABLES: Array<{ provider: LocalModelProvider; variables: stri
   { provider: 'google', variables: ['GEMINI_API_KEY', 'GOOGLE_GENERATIVE_AI_API_KEY', 'GOOGLE_API_KEY'] },
   { provider: 'openrouter', variables: ['OPENROUTER_API_KEY'] }
 ]
-const SHELL_TIMEOUT_MS = 5_000
 const IMPORT_TIMEOUT_MS = 20_000
-const ENV_MARKER = '__OVERLAY_ENV__'
 
 /** Where other tools' settings are read from. Unpackaged builds may point QA at a fixture folder. */
 function setupHome(): string {
   const override = app.isPackaged ? undefined : process.env.OVERLAY_DESKTOP_DEV_SETUP_HOME?.trim()
   return override || homedir()
-}
-
-/** The login shell's environment, where people keep model keys; the app itself starts without it on macOS. */
-export function readLoginShellEnvironment(home = homedir()): Promise<Record<string, string>> {
-  const shell = process.env.SHELL || '/bin/zsh'
-  return new Promise((resolve) => {
-    execFile(shell, ['-ilc', `printf '${ENV_MARKER}'; env -0`], { timeout: SHELL_TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, HOME: home } }, (_error, stdout) => {
-      const text = String(stdout ?? '')
-      const start = text.indexOf(ENV_MARKER)
-      if (start < 0) return resolve({})
-      const pairs = text.slice(start + ENV_MARKER.length).split('\0')
-      resolve(Object.fromEntries(pairs.flatMap((pair) => {
-        const index = pair.indexOf('=')
-        return index > 0 ? [[pair.slice(0, index), pair.slice(index + 1)]] : []
-      })))
-    })
-  })
 }
 
 export function shellKeysFrom(environment: Record<string, string>): Array<{ provider: LocalModelProvider; variable: string; value: string }> {
@@ -72,12 +55,19 @@ export function subscriptionSignIns(home: string): LocalSetupScan['subscriptions
 }
 
 type Post = (path: string, workspaceId: string, idempotencyKey: string, body: unknown) => Promise<void>
+type SaveLocalServer = (input: LocalMcpInput) => Promise<unknown>
 
 /**
  * Adds one item to the workspace through Overlay's own API. Each request's idempotency key covers what it sends, so a
  * retry never duplicates and importing an edited file again is a new request.
  */
-export async function importItem(item: ResolvedLocalSetupItem, workspaceId: string, defaults: Input<'localSetup.import'>['agentDefaults'], post: Post): Promise<void> {
+export async function importItem(
+  item: ResolvedLocalSetupItem,
+  workspaceId: string,
+  defaults: Input<'localSetup.import'>['agentDefaults'],
+  post: Post,
+  saveLocalServer?: SaveLocalServer
+): Promise<void> {
   const send = (path: string, body: unknown) => {
     const digest = createHash('sha256').update(`${workspaceId}\0${path}\0${JSON.stringify(body)}`).digest('hex').slice(0, 40)
     return post(path, workspaceId, `desktop-setup:${digest}`, body)
@@ -96,6 +86,15 @@ export async function importItem(item: ResolvedLocalSetupItem, workspaceId: stri
     await send('/api/v1/agents', {
       name: item.name, description: item.description, instructions: item.instructions,
       harness: 'overlay', modelId: defaults.modelId, allowedToolIds: defaults.allowedToolIds, visibility: 'creator'
+    })
+    return
+  }
+  if (item.kind === 'mcp_local') {
+    // Stays on this computer: the list in the app's data folder, the environment values in the keychain.
+    if (!saveLocalServer) throw new Error('This version of Overlay can’t run MCP servers on this computer yet.')
+    await saveLocalServer({
+      name: item.name, command: item.server.command, args: item.server.args, env: item.server.env,
+      cwd: item.server.cwd ?? null, importedFrom: { itemId: item.id, app: item.app }
     })
     return
   }
@@ -125,15 +124,67 @@ async function postWithAppSession(path: string, workspaceId: string, idempotency
   }
 }
 
+/** What one import sent, so importing the same contents into the same workspace again sends nothing. */
+export function importDigest(item: ResolvedLocalSetupItem): string {
+  return createHash('sha256').update(JSON.stringify(item)).digest('hex').slice(0, 32)
+}
+
+/** `{ [workspaceId]: { [itemId]: digest } }` of items imported from this computer. */
+type ImportLedger = Record<string, Record<string, string>>
+
+/**
+ * Marks items already in the workspace with the same contents (and local servers already on this computer), so a
+ * second import leaves them out. Edited files are offered again.
+ */
+export function markImported(
+  apps: LocalSetupApp[],
+  ledger: Record<string, string>,
+  resolve: (id: string) => ResolvedLocalSetupItem | null,
+  localServerItemIds: ReadonlySet<string>
+): LocalSetupApp[] {
+  return apps.map((entry) => ({
+    ...entry,
+    items: entry.items.map((item) => {
+      if (item.kind === 'mcp_local') return localServerItemIds.has(item.id) ? { ...item, imported: true } : item
+      const digest = ledger[item.id]
+      const resolved = digest ? resolve(item.id) : null
+      return resolved && importDigest(resolved) === digest ? { ...item, imported: true } : item
+    })
+  }))
+}
+
+const ledgerPath = () => join(app.getPath('userData'), 'local-setup-imports.json')
+
+function readLedger(): ImportLedger {
+  try {
+    const value = JSON.parse(readFileSync(ledgerPath(), 'utf8')) as unknown
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as ImportLedger : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeLedger(ledger: ImportLedger): void {
+  try {
+    mkdirSync(app.getPath('userData'), { recursive: true })
+    writeFileSync(ledgerPath(), `${JSON.stringify(ledger)}\n`, { mode: 0o600 })
+  } catch { /* Without the record, the server's idempotency keys still cover a retry within a day. */ }
+}
+
 class LocalSetupService {
   private shellKeys: Map<LocalModelProvider, string> | null = null
 
-  async scan(): Promise<LocalSetupScan> {
+  async scan(input?: Input<'localSetup.scan'>): Promise<LocalSetupScan> {
     const home = setupHome()
     const keys = shellKeysFrom(await readLoginShellEnvironment(home))
     this.shellKeys = new Map(keys.map(({ provider, value }) => [provider, value]))
+    const localMcp = privateThreadsService.supportsLocalMcp()
+    const found = scanLocalSetup(home, process.platform, { localMcp })
+    const apps = input?.workspaceId
+      ? markImported(found, readLedger()[input.workspaceId] ?? {}, (id) => resolveLocalSetupItem(home, id), this.localServerItemIds(localMcp))
+      : found
     return {
-      apps: scanLocalSetup(home),
+      apps,
       shellKeys: keys.map(({ provider, variable, value }) => ({ provider, variable, hint: value.slice(-4) })),
       subscriptions: subscriptionSignIns(home)
     }
@@ -142,20 +193,34 @@ class LocalSetupService {
   async import(input: Input<'localSetup.import'>): Promise<LocalSetupImportResult> {
     const home = setupHome()
     const result: LocalSetupImportResult = { imported: [], failed: [] }
+    const saveLocalServer = privateThreadsService.supportsLocalMcp()
+      ? (server: LocalMcpInput) => privateThreadsService.mcpSave(server)
+      : undefined
     for (const id of new Set(input.itemIds)) {
       const item = resolveLocalSetupItem(home, id)
       if (!item) {
         result.failed.push({ id, name: id.split(':').at(-1) ?? id, error: 'It is no longer on this computer, or it can’t be imported.' })
         continue
       }
+      const ledger = readLedger()
+      const digest = importDigest(item)
       try {
-        await importItem(item, input.workspaceId, input.agentDefaults, postWithAppSession)
+        // The same contents were already imported into this workspace: nothing to send. Local servers update in place.
+        if (item.kind === 'mcp_local' || ledger[input.workspaceId]?.[id] !== digest) {
+          await importItem(item, input.workspaceId, input.agentDefaults, postWithAppSession, saveLocalServer)
+          if (item.kind !== 'mcp_local') writeLedger({ ...ledger, [input.workspaceId]: { ...ledger[input.workspaceId], [id]: digest } })
+        }
         result.imported.push({ id, kind: item.kind, name: item.name })
       } catch (error) {
         result.failed.push({ id, name: item.name, error: error instanceof Error ? error.message : String(error) })
       }
     }
     return result
+  }
+
+  private localServerItemIds(supported: boolean): Set<string> {
+    if (!supported) return new Set()
+    return new Set(privateThreadsService.mcpImportedItemIds())
   }
 
   async useShellKey(input: Input<'localSetup.useShellKey'>): Promise<LocalModelKeys> {

@@ -182,5 +182,6 @@ enrollment remains rejected.
 
 `overlay-agent-host private --state-dir <dir>` runs threads whose Cloud sync is off. Overlay Desktop starts it with a
 Node.js IPC channel; it opens no port, runs one AI SDK `ToolLoopAgent` per turn with this computer's tools, calls only
-the model provider the person chose with their own key, and keeps transcripts in `<dir>/private-threads.sqlite`. It is
-not meant to be started by hand. See `internal/develop/private-threads.md` in the Overlay repository.
+the model provider the person chose with their own key, and keeps transcripts in `<dir>/private-threads.sqlite`. It
+also starts the person's local (stdio) MCP servers when a turn's agent may use them, and stops them when idle or on
+exit. It is not meant to be started by hand. See `internal/develop/private-threads.md` in the Overlay repository.

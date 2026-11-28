@@ -4,11 +4,11 @@ import { dirname, join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({ session: { fromPartition: () => ({ fetch: vi.fn() }) }, app: { getPath: () => tmpdir(), getVersion: () => '0.0.0' } }))
-vi.mock('./private-threads-service', () => ({ privateThreadsService: { setKey: vi.fn() } }))
+vi.mock('./private-threads-service', () => ({ privateThreadsService: { setKey: vi.fn(), supportsLocalMcp: () => true, mcpImportedItemIds: () => [] } }))
 vi.mock('./web-shell', () => ({ getWebShellOrigin: () => 'https://overlay.example', WEB_SHELL_PARTITION: 'test' }))
 
 import { instructionFacts, mcpAuth, parseCodexMcpServers, resolveLocalSetupItem, scanLocalSetup } from './local-setup'
-import { importItem, shellKeysFrom, subscriptionSignIns } from './local-setup-service'
+import { importDigest, importItem, markImported, shellKeysFrom, subscriptionSignIns } from './local-setup-service'
 
 let home: string
 const write = (path: string, text: string) => { mkdirSync(dirname(join(home, path)), { recursive: true }); writeFileSync(join(home, path), text) }
@@ -23,7 +23,7 @@ function fixture() {
     oauthAccount: { emailAddress: 'someone@example.com' },
     mcpServers: {
       linear: { type: 'http', url: 'https://mcp.linear.app/mcp', headers: { Authorization: 'Bearer lin_secret_token' } },
-      filesystem: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'] },
+      filesystem: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'], env: { FS_TOKEN: 'fs_secret_value' } },
     },
   }))
   write('.codex/AGENTS.md', 'Prefer plain language.\n')
@@ -45,6 +45,10 @@ describe('local setup scan', () => {
       ['mcp_local', 'filesystem', false],
     ])
     expect(JSON.stringify(apps)).not.toContain('lin_secret_token')
+    expect(JSON.stringify(apps)).not.toContain('fs_secret_value')
+    expect(claude.items.at(-1)!.detail).toBe('Runs on this computer · npx · 1 environment value')
+    // Local servers can be ticked once this app can run them.
+    expect(scanLocalSetup(home, 'darwin', { localMcp: true })[0]!.items.at(-1)!.importable).toBe(true)
     expect(JSON.stringify(apps)).not.toContain('operations at a small company')
     expect(apps[1]!.items.map((item) => item.kind)).toEqual(['instructions', 'mcp_remote', 'mcp_local'])
     expect(subscriptionSignIns(home)).toEqual({ claude: true, chatgpt: true })
@@ -56,7 +60,9 @@ describe('local setup scan', () => {
     const ids = Object.fromEntries(claude!.items.map((item) => [item.name, item.id]))
     expect(resolveLocalSetupItem(home, ids.researcher!, 'darwin')).toMatchObject({ kind: 'agent', name: 'researcher', instructions: 'You research questions and cite sources.' })
     expect(resolveLocalSetupItem(home, ids.linear!, 'darwin')).toMatchObject({ kind: 'mcp_remote', server: { url: 'https://mcp.linear.app/mcp' } })
-    expect(resolveLocalSetupItem(home, ids.filesystem!, 'darwin')).toBeNull()
+    expect(resolveLocalSetupItem(home, ids.filesystem!, 'darwin')).toMatchObject({
+      kind: 'mcp_local', app: 'Claude Code', server: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'], env: { FS_TOKEN: 'fs_secret_value' } },
+    })
     expect(resolveLocalSetupItem(home, 'claude_code:skill:missing', 'darwin')).toBeNull()
   })
 })
@@ -86,6 +92,38 @@ describe('local setup import', () => {
   })
 })
 
+describe('importing again', () => {
+  it('brings local servers onto this computer, not to the workspace', async () => {
+    fixture()
+    const [claude] = scanLocalSetup(home, 'darwin', { localMcp: true })
+    const local = resolveLocalSetupItem(home, claude!.items.at(-1)!.id, 'darwin')!
+    const posts: string[] = []
+    const saved: unknown[] = []
+    const defaults = { modelId: 'model-1', allowedToolIds: [] }
+    await importItem(local, 'workspace-1', defaults, async (path) => { posts.push(path) }, async (server) => { saved.push(server) })
+    expect(posts).toEqual([])
+    expect(saved).toEqual([{
+      name: 'filesystem', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'], env: { FS_TOKEN: 'fs_secret_value' },
+      cwd: null, importedFrom: { itemId: local.id, app: 'Claude Code' },
+    }])
+    await expect(importItem(local, 'workspace-1', defaults, async () => undefined)).rejects.toThrow(/can’t run MCP servers/)
+  })
+
+  it('marks what is already in the workspace with the same contents, and offers edited files again', () => {
+    fixture()
+    const apps = scanLocalSetup(home, 'darwin', { localMcp: true })
+    const ids = Object.fromEntries(apps[0]!.items.map((item) => [item.name, item.id]))
+    const resolve = (id: string) => resolveLocalSetupItem(home, id, 'darwin')
+    const ledger = { [ids.researcher!]: importDigest(resolve(ids.researcher!)!), [ids['weekly-report']!]: importDigest(resolve(ids['weekly-report']!)!) }
+    write('.claude/skills/weekly-report/SKILL.md', '---\nname: weekly-report\ndescription: Writes the Friday update\n---\nNow with charts.')
+    const marked = markImported(apps, ledger, resolve, new Set([ids.filesystem!]))
+    const imported = marked[0]!.items.filter((item) => item.imported).map((item) => item.name)
+    expect(imported).toEqual(['researcher', 'filesystem'])
+    // Another workspace has nothing imported.
+    expect(markImported(apps, {}, resolve, new Set()).flatMap((app) => app.items).some((item) => item.imported)).toBe(false)
+  })
+})
+
 describe('parsers', () => {
   it('keeps the facts of an instructions file', () => {
     expect(instructionFacts('---\nx: y\n---\n# Title\n- First fact here, long enough\n\nA short paragraph that\nspans two lines.\n```\ncode\n```\n@import ./other.md')).toEqual([
@@ -95,6 +133,10 @@ describe('parsers', () => {
   it('reads Codex MCP tables', () => {
     expect(parseCodexMcpServers('[mcp_servers.a]\nurl = "https://a.example"\n[other]\nx = 1\n[mcp_servers."b c"]\ncommand = "run"'))
       .toEqual({ a: { url: 'https://a.example' }, 'b c': { command: 'run' } })
+    expect(parseCodexMcpServers([
+      '[mcp_servers.files]', 'command = "npx"', String.raw`args = ["-y", '@scope/server', "C:\\x"]`, `env = { API_KEY = "k1", "OTHER" = 'k2' }`,
+      '[mcp_servers.files.env]', 'EXTRA = "k3"',
+    ].join('\n'))).toEqual({ files: { command: 'npx', args: ['-y', '@scope/server', 'C:\\x'], env: { API_KEY: 'k1', OTHER: 'k2', EXTRA: 'k3' } } })
   })
   it('maps headers to MCP auth and leaves out unresolved variables', () => {
     expect(mcpAuth({ Authorization: 'Bearer abc' })).toEqual({ authType: 'bearer', authConfig: { bearerToken: 'abc' } })

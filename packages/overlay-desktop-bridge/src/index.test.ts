@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { getDesktopBridge, isTrustedFrame, methodSchemas, notifyDesktopSignedOut } from './index'
+import { getDesktopBridge, isTrustedFrame, methodSchemas, notifyDesktopSignedOut, parseEnvironmentLines, splitCommandLine } from './index'
 
 test('ordinary browser and server rendering have no desktop bridge', () => {
   assert.equal(getDesktopBridge(), null)
@@ -50,4 +50,36 @@ test('microphone preferences are additive and bounded', () => {
   for (const inputDeviceId of ['', 'x'.repeat(513), 42]) {
     assert.equal(schema.safeParse({ model: 'cloud', inputDeviceId }).success, false)
   }
+})
+
+test('local MCP servers: names, environment and the grant flag are bounded', () => {
+  const add = methodSchemas['localMcp.add']
+  const server = { name: 'Files', command: 'npx', args: ['-y', '@modelcontextprotocol/server-filesystem'], env: { API_TOKEN: 'secret' } }
+  assert.equal(add.safeParse(server).success, true)
+  assert.equal(add.safeParse({ ...server, env: { 'NOT VALID': 'x' } }).success, false)
+  assert.equal(add.safeParse({ ...server, command: ' ' }).success, false)
+  assert.equal(add.safeParse({ ...server, args: Array(101).fill('x') }).success, false)
+  assert.equal(add.safeParse({ ...server, id: 'chosen-by-page' }).success, false)
+  assert.equal(methodSchemas['localMcp.remove'].safeParse({ id: '' }).success, false)
+  const send = methodSchemas['localThreads.send']
+  const turn = {
+    owner: { userId: 'u', workspaceId: 'w' }, threadId: 'private_1', turnId: 't', messages: [{ id: 'm', role: 'user', parts: [] }],
+    model: { provider: 'anthropic', modelId: 'claude' }, approvalMode: 'ask',
+  }
+  assert.equal(send.safeParse({ ...turn, agent: { name: 'Atlas', localMcp: true } }).success, true)
+  // The page names only whether the agent may use them; which servers and their values come from the desktop app.
+  assert.equal(send.safeParse({ ...turn, agent: { name: 'Atlas', localMcp: true }, localMcp: [server] }).success, false)
+})
+
+test('a typed command line splits like a shell would, without running one', () => {
+  assert.deepEqual(splitCommandLine('npx -y @modelcontextprotocol/server-filesystem "/Users/me/My Files"'),
+    ['npx', '-y', '@modelcontextprotocol/server-filesystem', '/Users/me/My Files'])
+  assert.deepEqual(splitCommandLine(`uvx  mcp-server --name='a b' --x=\\"q\\" ""`), ['uvx', 'mcp-server', '--name=a b', '--x="q"', ''])
+  assert.deepEqual(splitCommandLine('echo $HOME | cat'), ['echo', '$HOME', '|', 'cat'])
+  assert.throws(() => splitCommandLine('npx "unclosed'), /not closed/)
+})
+
+test('environment lines become name and value pairs', () => {
+  assert.deepEqual(parseEnvironmentLines('# token\nAPI_KEY=abc=def\n\nexport REGION="eu"\n'), { API_KEY: 'abc=def', REGION: 'eu' })
+  assert.throws(() => parseEnvironmentLines('not a pair'), /NAME=value/)
 })

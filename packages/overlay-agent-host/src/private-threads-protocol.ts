@@ -29,6 +29,21 @@ const id = z.string().trim().min(1).max(200)
 const owner = z.object({ userId: id, workspaceId: id }).strict()
 const folder = z.string().trim().min(1).max(4096).refine(isAbsolute, 'Folders must be absolute paths.')
 
+/**
+ * An MCP server that runs on this computer (stdio). Overlay Desktop keeps the list and reads the environment values
+ * from the Keychain for each turn; the host holds them in memory only while the server runs.
+ */
+export const localMcpServerSchema = z.object({
+  id,
+  name: z.string().trim().min(1).max(100),
+  command: z.string().trim().min(1).max(4_096),
+  args: z.array(z.string().max(4_096)).max(100),
+  env: z.record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/).max(200), z.string().max(32_768))
+    .refine(value => Object.keys(value).length <= 100, 'Too many environment values.'),
+  cwd: folder.optional(),
+}).strict()
+export type LocalMcpServer = z.output<typeof localMcpServerSchema>
+
 export const privateRequestSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('list'), owner }).strict(),
   z.object({ method: z.literal('get'), owner, threadId: id }).strict(),
@@ -70,6 +85,8 @@ export const privateRequestSchema = z.discriminatedUnion('method', [
       url: z.string().url().max(2_048).refine(value => /^https:\/\/|^http:\/\/(localhost|127\.0\.0\.1)(:|\/)/.test(value), 'Overlay tools need https.'),
       token: z.string().min(1).max(4_096),
     }).strict().optional(),
+    /** MCP servers on this computer whose tools join this turn, when the agent's grant includes MCP servers. */
+    localMcp: z.array(localMcpServerSchema).max(20).optional(),
   }).strict(),
   z.object({ method: z.literal('stop'), owner, threadId: id }).strict(),
   z.object({
@@ -81,6 +98,10 @@ export const privateRequestSchema = z.discriminatedUnion('method', [
   z.object({ method: z.literal('delete'), owner, threadId: id }).strict(),
   /** Checks a key and lists the chat models it can use. */
   z.object({ method: z.literal('models'), provider: z.enum(privateModelProviders), apiKey: z.string().min(1).max(4_096) }).strict(),
+  /** Starts a local MCP server (or reuses it) and lists its tools, so Settings can show that it works. */
+  z.object({ method: z.literal('mcpCheck'), server: localMcpServerSchema }).strict(),
+  /** Stops a local MCP server that was removed or changed. */
+  z.object({ method: z.literal('mcpStop'), serverId: id }).strict(),
 ])
 export type PrivateRequest = z.input<typeof privateRequestSchema>
 export type ParsedPrivateRequest = z.output<typeof privateRequestSchema>
@@ -94,6 +115,8 @@ export type PrivateResults = {
   update: { thread: PrivateThread }
   delete: { deleted: boolean }
   models: { models: { id: string; name: string }[] }
+  mcpCheck: { tools: { name: string; description: string }[] }
+  mcpStop: { stopped: boolean }
 }
 
 export type PrivateTurnState = 'running' | 'finished' | 'stopped' | 'error'
@@ -104,7 +127,7 @@ export type PrivateEvent =
 
 export type PrivateIpcInbound = { type: 'request'; id: number; request: PrivateRequest }
 export type PrivateIpcOutbound =
-  | { type: 'ready'; protocolVersion: typeof PRIVATE_THREADS_PROTOCOL_VERSION }
+  | { type: 'ready'; protocolVersion: typeof PRIVATE_THREADS_PROTOCOL_VERSION; features?: string[] }
   | { type: 'response'; id: number; ok: true; result: unknown }
   | { type: 'response'; id: number; ok: false; error: string }
   | { type: 'event'; event: PrivateEvent }

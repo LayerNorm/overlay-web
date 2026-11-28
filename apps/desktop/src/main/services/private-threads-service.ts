@@ -17,6 +17,8 @@ import { resolveEmbeddedHostRuntime } from './embedded-host-config'
 import { createLocalHelperEnvironment } from './security/local-helper-process'
 import { safeStorageService } from './security/safe-storage-service'
 import { ensureLocalComputerWorkFolder } from './local-computer'
+import { LocalMcpStore, type LocalMcpInput, type LocalMcpLaunch } from './local-mcp-servers'
+import { loginShellPath } from './login-shell'
 import { getWebShellOrigin, WEB_SHELL_PARTITION } from './web-shell'
 
 /**
@@ -38,11 +40,15 @@ type HostEvent =
   | { kind: 'threads'; owner: Events['localThreads.threads'] }
 
 const KEY_PREFIX = 'private-model-key-'
+/** The bundled host's ready message names this when it can run MCP servers on this computer. */
+const LOCAL_MCP_FEATURE = 'overlay-private-local-mcp-servers'
 const START_TIMEOUT_MS = 15_000
 const OVERLAY_TOOLS_TIMEOUT_MS = 15_000
 
 class PrivateThreadsService {
   private supported: boolean | null = null
+  private localMcpSupported: boolean | null = null
+  private mcpStore: LocalMcpStore | null = null
   private child: ChildProcess | null = null
   private ready: Promise<void> | null = null
   private nextId = 1
@@ -62,6 +68,31 @@ class PrivateThreadsService {
       this.supported = false
     }
     return this.supported
+  }
+
+  /** Local MCP servers need a bundled Agent Host that runs them (the release after 0.7.0). */
+  supportsLocalMcp(): boolean {
+    if (this.localMcpSupported !== null) return this.localMcpSupported
+    const runtime = this.isSupported() ? resolveEmbeddedHostRuntime({
+      packaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      appPath: app.getAppPath()
+    }) : null
+    try {
+      this.localMcpSupported = Boolean(runtime && readFileSync(runtime.cliPath, 'utf8').includes(LOCAL_MCP_FEATURE))
+    } catch {
+      this.localMcpSupported = false
+    }
+    return this.localMcpSupported
+  }
+
+  private localMcpStore(): LocalMcpStore {
+    this.mcpStore ??= new LocalMcpStore(join(this.stateDirectory(), 'local-mcp-servers.json'), {
+      get: (key) => safeStorageService.getSecureValue(key),
+      set: (key, value) => safeStorageService.storeSecureValue(key, value),
+      delete: (key) => { safeStorageService.deleteSecureValue(key) }
+    })
+    return this.mcpStore
   }
 
   private stateDirectory(): string {
@@ -174,10 +205,14 @@ class PrivateThreadsService {
     const { thread } = await this.get({ owner: input.owner, threadId: input.threadId })
     const roots = [thread.folder ?? ensureLocalComputerWorkFolder()]
     const overlay = await overlayToolsAccess(input.owner.workspaceId, thread.agentId)
+    const { localMcp: mayUseLocalMcp, ...agent } = input.agent
+    // Only when the agent's grant includes MCP servers; their environment values leave the keychain for this turn only.
+    const localMcp = mayUseLocalMcp && this.supportsLocalMcp() ? await withLoginPath(this.localMcpStore().launches()) : []
     return await this.request<Results['localThreads.send']>({
       method: 'send', owner: input.owner, threadId: input.threadId, turnId: input.turnId,
-      messages: input.messages, model: { ...input.model, apiKey }, agent: input.agent,
-      roots, approvalMode: input.approvalMode, ...(overlay ? { overlay } : {})
+      messages: input.messages, model: { ...input.model, apiKey }, agent,
+      roots, approvalMode: input.approvalMode, ...(overlay ? { overlay } : {}),
+      ...(localMcp.length ? { localMcp } : {})
     })
   }
 
@@ -222,6 +257,38 @@ class PrivateThreadsService {
     return await this.request<Results['localThreads.models']>({ method: 'models', provider: input.provider, apiKey })
   }
 
+  mcpImportedItemIds(): string[] {
+    return this.localMcpStore().importedItemIds()
+  }
+
+  mcpList(): Results['localMcp.list'] {
+    return { servers: this.localMcpStore().list() }
+  }
+
+  /** Adds or updates a local MCP server; a running copy with the old settings is stopped. */
+  async mcpSave(input: LocalMcpInput): Promise<{ id: string; created: boolean }> {
+    const saved = this.localMcpStore().save(input)
+    if (!saved.created) await this.stopLocalMcp(saved.id)
+    return saved
+  }
+
+  async mcpRemove(input: Input<'localMcp.remove'>): Promise<Results['localMcp.remove']> {
+    if (this.localMcpStore().remove(input.id)) await this.stopLocalMcp(input.id)
+    return this.mcpList()
+  }
+
+  async mcpCheck(input: Input<'localMcp.check'>): Promise<Results['localMcp.check']> {
+    const server = this.localMcpStore().launch(input.id)
+    if (!server) throw new Error('This server is no longer on this computer.')
+    const [launch] = await withLoginPath([server])
+    return await this.request<Results['localMcp.check']>({ method: 'mcpCheck', server: launch })
+  }
+
+  private async stopLocalMcp(id: string): Promise<void> {
+    if (!this.child?.connected) return
+    await this.request({ method: 'mcpStop', serverId: id }).catch(() => undefined)
+  }
+
   /** Signing out or quitting stops private runs; their transcripts are kept up to the last step. */
   stopAll(): void {
     const child = this.child
@@ -231,6 +298,13 @@ class PrivateThreadsService {
     if (child.connected) child.disconnect()
     setTimeout(() => { if (child.exitCode === null) child.kill('SIGTERM') }, 3_000).unref()
   }
+}
+
+/** Servers start with the login shell's PATH (where `npx` and `uvx` live) unless they set their own. */
+async function withLoginPath(servers: LocalMcpLaunch[]): Promise<LocalMcpLaunch[]> {
+  if (!servers.length) return servers
+  const path = await loginShellPath()
+  return path ? servers.map((server) => ({ ...server, env: { PATH: path, ...server.env } })) : servers
 }
 
 function readKey(provider: LocalModelProvider): string | null {

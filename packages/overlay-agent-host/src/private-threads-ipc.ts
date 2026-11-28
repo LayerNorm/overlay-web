@@ -1,5 +1,6 @@
 import { PrivateThreadService, privateThreadsDatabasePath } from './private-threads.js'
 import { PrivateThreadStore } from './private-threads-store.js'
+import { LOCAL_MCP_FEATURE } from './private-threads-local-mcp.js'
 import {
   PRIVATE_THREADS_PROTOCOL_VERSION,
   type PrivateIpcInbound,
@@ -40,7 +41,7 @@ export async function servePrivateThreads(stateDirectory: string): Promise<void>
   process.on('disconnect', () => void close())
   process.once('SIGTERM', () => void close())
   process.once('SIGINT', () => void close())
-  post({ type: 'ready', protocolVersion: PRIVATE_THREADS_PROTOCOL_VERSION })
+  post({ type: 'ready', protocolVersion: PRIVATE_THREADS_PROTOCOL_VERSION, features: [LOCAL_MCP_FEATURE] })
   await new Promise<never>(() => undefined)
 }
 

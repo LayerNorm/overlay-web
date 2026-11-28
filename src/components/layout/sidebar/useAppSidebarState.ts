@@ -50,6 +50,7 @@ import {
 import { beginNavigationIntent } from '@/shared/app/navigation-intent'
 import { resolveSecondaryPanelNav } from './appSidebarPanelNav'
 import { useIsSoloWorkspace } from '@/hooks/use-solo-workspace'
+import { desktopSettingsSections } from '@/components/desktop/desktop-settings-sections'
 import type { PanelScope } from '@/shared/workspaces/panel-scope'
 import {
   useBodyScrollLock,
@@ -93,7 +94,7 @@ function useSidebarNavConfig({ appShell, capabilities, allows,  user }: SidebarN
   )
   const desktop = useDesktopBridge()
   const settingsSections = useMemo(
-    () => [...appShell.settingsSections, ...(desktop ? [{ id: 'desktop', label: 'Desktop', icon: 'laptop' as const, order: 100 }] : [])].filter((section) => (
+    () => [...appShell.settingsSections, ...desktopSettingsSections(desktop?.info.capabilities)].filter((section) => (
       !user || allows(getSettingsSectionAuthorizationRequirement(section.id))
     )),
     [allows, appShell.settingsSections, desktop, user],

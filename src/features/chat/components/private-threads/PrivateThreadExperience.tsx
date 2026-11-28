@@ -18,6 +18,8 @@ import { AgentCreature } from '@/components/orb/Creature'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
 import { useLocalModelKeys, useLocalThreadOwner, useLocalThreadsBridge, type LocalThreadOwner } from '@/components/desktop/useLocalThreads'
 import { useThisComputer } from '@/components/desktop/useThisComputer'
+import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
+import { agentToolCapabilities } from '@/shared/agents/tool-groups'
 import { folderName } from '@/components/desktop/this-computer'
 import { ChatComposer } from '../ChatComposer'
 import type { MentionInputHandle } from '../chat-interface/MentionInput'
@@ -86,13 +88,19 @@ function PrivateThreadView({ bridge, owner, agent, initial, headerActions }: {
   const [thread, setThread] = useState(initial.thread)
   const threadId = thread.id
   const { keys } = useLocalModelKeys()
+  const localMcp = useDesktopBridge()?.info.capabilities.includes('localMcp') ?? false
   const model = usePrivateModel(bridge, keys, agent.modelId)
   const resolvedModel = model.resolved
   const turnSettings = useMemo<PrivateTurnSettings | null>(() => resolvedModel ? {
     model: resolvedModel,
-    agent: { name: agent.name, ...(agent.instructions ? { instructions: agent.instructions } : {}) },
+    agent: {
+      name: agent.name,
+      ...(agent.instructions ? { instructions: agent.instructions } : {}),
+      // Only a desktop app that runs local MCP servers accepts the flag.
+      ...(localMcp && agentToolCapabilities(agent.allowedToolIds ?? []).has('mcp') ? { localMcp: true } : {}),
+    },
     approvalMode: 'ask',
-  } : null, [agent.instructions, agent.name, resolvedModel])
+  } : null, [agent.allowedToolIds, agent.instructions, agent.name, localMcp, resolvedModel])
   // One transport per thread; it sends with the model chosen at send time.
   const [transport] = useState(() => new DesktopChatTransport({ bridge, owner, threadId }))
   useEffect(() => { transport.applySettings(turnSettings) }, [transport, turnSettings])

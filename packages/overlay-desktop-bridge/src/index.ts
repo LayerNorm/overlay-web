@@ -15,6 +15,7 @@ export const capabilities = [
   "localComputer",
   "localThreads",
   "localSetup",
+  "localMcp",
   "updates",
   "diagnostics",
 ] as const;
@@ -40,6 +41,11 @@ export const localModelProviders = [
 ] as const;
 export type LocalModelProvider = (typeof localModelProviders)[number];
 const localFolder = z.string().trim().min(1).max(4096).startsWith("/");
+/** Environment variable names a local MCP server is started with. */
+export const localMcpEnvName = z
+  .string()
+  .regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
+  .max(200);
 export const methodSchemas = {
   handshake: empty,
   "window.openDataFolder": empty,
@@ -157,6 +163,8 @@ export const methodSchemas = {
         .object({
           name: z.string().trim().min(1).max(200),
           instructions: z.string().max(50_000).optional(),
+          /** The agent's grant includes MCP servers: this computer's local MCP servers join the turn. */
+          localMcp: z.boolean().optional(),
         })
         .strict(),
       approvalMode: z.enum(["ask", "auto"]),
@@ -184,8 +192,11 @@ export const methodSchemas = {
   "localThreads.models": z
     .object({ provider: z.enum(localModelProviders) })
     .strict(),
-  /** Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets. */
-  "localSetup.scan": empty,
+  /**
+   * Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets.
+   * With a workspace, items already imported into it are marked.
+   */
+  "localSetup.scan": z.object({ workspaceId: id }).strict().optional(),
   /** Reads the chosen items again and adds them to the workspace with the app's own session. */
   "localSetup.import": z
     .object({
@@ -201,6 +212,22 @@ export const methodSchemas = {
   "localSetup.useShellKey": z
     .object({ provider: z.enum(localModelProviders) })
     .strict(),
+  /** MCP servers that run on this computer for private threads; environment values are never returned. */
+  "localMcp.list": empty,
+  /** Adds a server by hand. Environment values go to the system keychain. */
+  "localMcp.add": z
+    .object({
+      name: z.string().trim().min(1).max(100),
+      command: z.string().trim().min(1).max(4096),
+      args: z.array(z.string().max(4096)).max(100),
+      env: z
+        .record(localMcpEnvName, z.string().max(32_768))
+        .refine((value) => Object.keys(value).length <= 100),
+    })
+    .strict(),
+  "localMcp.remove": z.object({ id }).strict(),
+  /** Starts the server (or reuses it) and lists its tools. */
+  "localMcp.check": z.object({ id }).strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -271,8 +298,10 @@ export type LocalSetupItem = {
   kind: LocalSetupItemKind;
   name: string;
   detail: string;
-  /** Local (command) MCP servers can't be imported yet. */
+  /** False when this app can't bring it over (a local MCP server on an app without local MCP support, an http URL). */
   importable: boolean;
+  /** Already brought into this workspace with the same contents (or onto this computer, for a local server). */
+  imported?: boolean;
 };
 export type LocalSetupApp = {
   id: "claude_code" | "codex" | "claude_desktop" | "cursor" | "gemini_cli";
@@ -291,6 +320,17 @@ export type LocalSetupScan = {
 export type LocalSetupImportResult = {
   imported: { id: string; kind: LocalSetupItemKind; name: string }[];
   failed: { id: string; name: string; error: string }[];
+};
+/** An MCP server that runs on this computer. Environment values stay in the keychain; only their names are here. */
+export type LocalMcpServer = {
+  id: string;
+  name: string;
+  command: string;
+  args: string[];
+  envNames: string[];
+  /** The app it was imported from (Claude Code, Cursor…), or null when added by hand. */
+  importedFrom: string | null;
+  addedAt: number;
 };
 export type UpdateStatus = {
   state: string;
@@ -357,6 +397,10 @@ export type Results = {
   "localSetup.scan": LocalSetupScan;
   "localSetup.import": LocalSetupImportResult;
   "localSetup.useShellKey": LocalModelKeys;
+  "localMcp.list": { servers: LocalMcpServer[] };
+  "localMcp.add": { servers: LocalMcpServer[] };
+  "localMcp.remove": { servers: LocalMcpServer[] };
+  "localMcp.check": { tools: { name: string; description: string }[] };
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;
@@ -406,6 +450,54 @@ export function getDesktopBridge(): DesktopBridge | null {
     ? bridge
     : null;
 }
+/**
+ * Splits a command line typed in Settings → Desktop into the program and its arguments, honouring single and double quotes and
+ * backslash escapes. No shell runs it: `$VAR`, globs and pipes are passed as written.
+ */
+export function splitCommandLine(line: string): string[] {
+  const words: string[] = []
+  let current = ''
+  let quote: '"' | '\'' | null = null
+  let started = false
+  for (let index = 0; index < line.length; index++) {
+    const char = line[index]!
+    if (quote) {
+      if (char === quote) quote = null
+      else if (char === '\\' && quote === '"' && index + 1 < line.length) current += line[++index]
+      else current += char
+    } else if (char === '"' || char === '\'') {
+      quote = char
+      started = true
+    } else if (char === '\\' && index + 1 < line.length) {
+      current += line[++index]
+      started = true
+    } else if (/\s/.test(char)) {
+      if (started) words.push(current)
+      current = ''
+      started = false
+    } else {
+      current += char
+      started = true
+    }
+  }
+  if (quote) throw new Error('A quote in the command is not closed.')
+  if (started) words.push(current)
+  return words
+}
+
+/** Environment values typed in Settings → Desktop: `NAME=value` lines; blank lines and `#` comments are skipped. */
+export function parseEnvironmentLines(text: string): Record<string, string> {
+  const env: Record<string, string> = {};
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const match = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line);
+    if (!match) throw new Error(`“${line.split("=")[0]}” isn’t an environment value. Write NAME=value.`);
+    env[match[1]!] = match[2]!.replace(/^(["'])(.*)\1$/, "$2");
+  }
+  return env;
+}
+
 export function capabilityForMethod(method: Method): Capability | null {
   return method === "handshake" ? null : (method.split(".")[0] as Capability);
 }
