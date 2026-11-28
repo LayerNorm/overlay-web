@@ -7,19 +7,9 @@ export const OWNER_FUNDED_OPERATIONS = [
     path: '/api/v1/conversations/act',
   },
   {
-    id: 'conversation.extension-plan',
-    method: 'POST',
-    path: '/api/v1/conversations/act/extension-plan',
-  },
-  {
     id: 'chat.generate-title',
     method: 'POST',
     path: '/api/v1/generate-title',
-  },
-  {
-    id: 'chat.generate-tab-group-label',
-    method: 'POST',
-    path: '/api/v1/generate-tab-group-label',
   },
   {
     id: 'chat.suggestions',

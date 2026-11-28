@@ -43,7 +43,6 @@ import {
   FileContentQuery,
   FileListQuery,
   GenerateImageRequest,
-  GenerateTabGroupLabelRequest,
   GenerateTitleRequest,
   LinkPreviewQuery,
   GenerateVideoRequest,
@@ -540,14 +539,6 @@ export const webApiBoundaryDefinitions = [
   },
   {
     method: 'POST',
-    path: '/api/v1/conversations/act/extension-plan',
-    schema: { json: ActConversationRequest },
-    summary: 'Plan extension actions for an Act turn',
-    tag: 'Conversations',
-    publicReference: false,
-  },
-  {
-    method: 'POST',
     path: '/api/v1/conversations/agent-greeting',
     schema: { json: AgentGreetingRequest },
     summary: 'Post the new-agent greeting as the agent itself',
@@ -680,14 +671,6 @@ export const webApiBoundaryDefinitions = [
     schema: { json: GenerateImageRequest },
     summary: 'Generate an image',
     tag: 'Media',
-  },
-  {
-    method: 'POST',
-    path: '/api/v1/generate-tab-group-label',
-    schema: { json: GenerateTabGroupLabelRequest },
-    summary: 'Generate a tab group label',
-    tag: 'Tools',
-    publicReference: false,
   },
   {
     method: 'GET',

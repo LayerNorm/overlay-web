@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { useRouter, useSearchParams } from 'next/navigation'
+import type { useSearchParams } from 'next/navigation'
 import type { useAccountBillingState } from '@/features/account/hooks/useAccountBillingState'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import {
@@ -18,134 +18,12 @@ import {
 const APP_PROTOCOL = 'overlay'
 
 export type AccountBillingState = ReturnType<typeof useAccountBillingState>
-type AccountRouter = { replace: (href: string, options?: { scroll?: boolean }) => void }
 
 function triggerDeepLink(url: string) {
   // Server-supplied value assigned to location: only the app's own scheme is
   // allowed, so a javascript: URL can never reach the navigation.
   if (typeof url !== 'string' || !url.startsWith(`${APP_PROTOCOL}://`)) return
   window.location.href = url
-}
-
-function getChromeRuntime() {
-  if (typeof window === 'undefined') return undefined
-  return (
-    window as unknown as {
-      chrome?: {
-        runtime?: {
-          sendMessage: (extId: string, msg: unknown, cb?: () => void) => void
-          lastError?: { message: string }
-        }
-      }
-    }
-  ).chrome?.runtime
-}
-
-async function deliverExtensionHandoff({
-  codeChallenge,
-  chromeExtensionId,
-  isCancelled,
-}: {
-  codeChallenge: string
-  chromeExtensionId: string
-  isCancelled: () => boolean
-}): Promise<boolean> {
-  const response = await overlayAppClient.account.desktopLinkResponse({
-    codeChallenge,
-    chromeExtensionId,
-  })
-  if (isCancelled() || !response.ok) return false
-  const json = (await response.json()) as { deepLink?: string }
-  const deepLink = typeof json.deepLink === 'string' ? json.deepLink : ''
-  const tokenMatch = deepLink.match(/[?&]token=([^&]+)/)
-  const rawToken = tokenMatch?.[1]
-  const token = rawToken ? decodeURIComponent(rawToken) : ''
-  if (!token || isCancelled()) return false
-
-  const chromeRuntime = getChromeRuntime()
-  if (!chromeRuntime?.sendMessage) return false
-  chromeRuntime.sendMessage(
-    chromeExtensionId,
-    { type: 'overlay.extension.auth.handoff', token },
-    () => {
-      void chromeRuntime.lastError
-    },
-  )
-  return true
-}
-
-function useExtensionHandoff({
-  extensionHandoff,
-  chromeExtensionId,
-  desktopCodeChallenge,
-  isAuthenticated,
-  currentUserId,
-  sessionCheckComplete,
-  setMessage,
-  router,
-}: {
-  extensionHandoff: boolean
-  chromeExtensionId: string
-  desktopCodeChallenge: string
-  isAuthenticated: boolean
-  currentUserId: string | null
-  sessionCheckComplete: boolean
-  setMessage: AccountBillingState['setMessage']
-  router: AccountRouter
-}) {
-  const handoffSentRef = useRef(false)
-
-  useEffect(() => {
-    if (!extensionHandoff || !chromeExtensionId || !desktopCodeChallenge) return
-    if (!isAuthenticated || !currentUserId || !sessionCheckComplete) return
-    if (handoffSentRef.current) return
-    if (!/^[a-p]{32}$/.test(chromeExtensionId)) return
-
-    handoffSentRef.current = true
-    let cancelled = false
-
-    void (async () => {
-      try {
-        const sent = await deliverExtensionHandoff({
-          codeChallenge: desktopCodeChallenge,
-          chromeExtensionId,
-          isCancelled: () => cancelled,
-        })
-        if (!sent) {
-          handoffSentRef.current = false
-          return
-        }
-        setMessage({
-          type: 'success',
-          text: 'Chrome extension connected. You can return to the side panel and press Refresh if needed.',
-        })
-      } catch (e) {
-        console.error('[Account] Extension handoff error:', e)
-        handoffSentRef.current = false
-      } finally {
-        if (!cancelled && typeof window !== 'undefined') {
-          const next = new URL(window.location.href)
-          next.searchParams.delete('extension_handoff')
-          next.searchParams.delete('chrome_extension_id')
-          next.searchParams.delete('desktop_code_challenge')
-          router.replace(`${next.pathname}${next.search}`, { scroll: false })
-        }
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [
-    chromeExtensionId,
-    currentUserId,
-    desktopCodeChallenge,
-    extensionHandoff,
-    isAuthenticated,
-    router,
-    sessionCheckComplete,
-    setMessage,
-  ])
 }
 
 async function requestDesktopDeepLink(
@@ -304,19 +182,15 @@ export function useAccountHandoffs({
   currentUserId,
   sessionCheckComplete,
   billing,
-  router,
 }: {
   searchParams: ReturnType<typeof useSearchParams>
   isAuthenticated: boolean
   currentUserId: string | null
   sessionCheckComplete: boolean
   billing: ReturnType<typeof useAccountBillingState>
-  router: ReturnType<typeof useRouter>
 }) {
   const desktopCodeChallengeFromUrl = searchParams?.get('desktop_code_challenge')?.trim() || ''
   const desktopCodeChallenge = desktopCodeChallengeFromUrl || getStoredDesktopPkceChallenge() || ''
-  const extensionHandoff = searchParams?.get('extension_handoff') === '1'
-  const chromeExtensionIdRaw = searchParams?.get('chrome_extension_id')?.trim() || ''
   const accountSignInHref = desktopCodeChallenge
     ? `/auth/sign-in?redirect=${encodeURIComponent(
         `/account?desktop_code_challenge=${encodeURIComponent(desktopCodeChallenge)}`,
@@ -326,17 +200,6 @@ export function useAccountHandoffs({
   useEffect(() => {
     persistMobilePkceChallengeFromUrl(searchParams)
   }, [searchParams])
-
-  useExtensionHandoff({
-    extensionHandoff,
-    chromeExtensionId: chromeExtensionIdRaw,
-    desktopCodeChallenge,
-    isAuthenticated,
-    currentUserId,
-    sessionCheckComplete,
-    setMessage: billing.setMessage,
-    router,
-  })
 
   const handleOpenInApp = useDesktopHandoff({
     desktopCodeChallenge,

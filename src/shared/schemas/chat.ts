@@ -181,11 +181,6 @@ export const GenerateVideoRequest = GenerateImageRequest.extend({
 
 export const GenerateMediaRequest = GenerateImageRequest
 
-export const GenerateTabGroupLabelRequest = z.object({
-  ...AuthFields,
-  tabs: z.array(z.unknown()).optional(),
-}).passthrough()
-
 export const ChatResponse = UnknownResponse
 
 export type CreateConversationRequest = z.infer<typeof CreateConversationRequest>

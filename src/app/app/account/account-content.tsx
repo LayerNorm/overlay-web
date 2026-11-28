@@ -22,7 +22,7 @@ export function AccountPageContent() {
   const searchParams = useSearchParams()
   const billing = useAccountBillingState()
   const sessionCheckComplete = useSessionCheckOnMount(isAuthenticated, isLoading, refreshSession)
-  const { accountSignInHref, handleOpenInApp } = useAccountHandoffs({ searchParams, isAuthenticated, currentUserId: user?.id ?? null, sessionCheckComplete, billing, router })
+  const { accountSignInHref, handleOpenInApp } = useAccountHandoffs({ searchParams, isAuthenticated, currentUserId: user?.id ?? null, sessionCheckComplete, billing })
   const [signingOut, setSigningOut] = useState(false)
   const [signOutError, setSignOutError] = useState<string | null>(null)
 

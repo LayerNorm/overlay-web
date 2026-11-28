@@ -6,7 +6,6 @@ import { ContextMeter, PromptInput, PromptInputBody, PromptInputButton, PromptIn
 import {
   AtSign,
   Brain,
-  Check,
   FileText,
   Globe2,
   Image as ImageIcon,
@@ -18,7 +17,9 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
-import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from 'react'
+import { isChromeExtensionFrame } from '@/components/chrome/chrome-extension'
+import { AttachMenuButton, ChromePageAttachItem } from './ChatComposerAttachMenuItems'
+import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent, type RefObject } from 'react'
 import { DelayedTooltip } from './DelayedTooltip'
 import { recordRender } from '@overlay/chat-react/lib/perf-debug'
 import { markComposerReady } from '../lib/realtime-baseline'
@@ -364,6 +365,9 @@ function AttachMenu(props: ComposerViewProps & { mixedFileInputRef: RefObject<HT
               suffix="Images, docs"
             />
           )}
+          {props.capabilities.files && isChromeExtensionFrame() ? (
+            <ChromePageAttachItem onAdd={props.onAddDocumentsFromPicker} close={() => props.setShowAttachMenu(false)} />
+          ) : null}
           {props.attachMenuExtra?.(() => props.setShowAttachMenu(false))}
           {TOOL_REQUEST_OPTIONS.filter((tool) => isToolRequestEnabled(tool.id, props)).map((tool) => {
             const active = selectedToolIdSet.has(tool.id)
@@ -417,49 +421,6 @@ function isToolRequestEnabled(
   return true
 }
 
-function AttachMenuButton({
-  active,
-  disabled,
-  title,
-  onClick,
-  icon,
-  label,
-  suffix,
-  showSwitch,
-  checked,
-  neutralWhenActive,
-}: {
-  active?: boolean
-  disabled?: boolean
-  title?: string
-  onClick: () => void
-  icon: ReactNode
-  label: string
-  suffix?: string
-  showSwitch?: boolean
-  checked?: boolean
-  neutralWhenActive?: boolean
-}) {
-  const activeClass = active && !neutralWhenActive
-    ? 'bg-(--surface-muted) text-(--foreground)'
-    : 'text-(--muted) hover:bg-(--surface-muted) hover:text-(--foreground)'
-
-  return (
-    <Button variant="ghost" type="button" onClick={onClick} disabled={disabled} title={title} aria-pressed={active} className={`h-auto w-full justify-start gap-2.5 px-3 py-2 text-xs font-normal transition-colors ${disabled ? 'cursor-not-allowed text-[#bbb]' : activeClass}`}>
-      {icon}
-      <span>{label}</span>
-      {showSwitch ? (
-        <span className={`ml-auto flex h-4 w-7 items-center rounded-full p-0.5 transition-colors ${active ? 'bg-(--muted)' : 'bg-(--border)'}`}>
-          <span className={`h-3 w-3 rounded-full bg-(--surface-elevated) transition-transform ${active ? 'translate-x-3' : ''}`} />
-        </span>
-      ) : checked ? (
-        <Check size={11} strokeWidth={1.8} className="ml-auto shrink-0 text-(--foreground)" />
-      ) : suffix ? (
-        <span className="ml-auto max-w-27 truncate text-[10px] text-(--muted-light)">{suffix}</span>
-      ) : null}
-    </Button>
-  )
-}
 
 function ToolRequestChip({
   label,

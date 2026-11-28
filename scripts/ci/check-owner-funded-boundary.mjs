@@ -6,9 +6,7 @@ import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 // the actual cost directly afterwards. Nothing is estimated or held.
 const rules = [
   ['src/server/harness/model-dispatch.ts', 'assertWorkspaceBudgetNotLow', 'workspaceBudgetLow'],
-  ['src/server/app-api/v1/conversations/act/extension-plan/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/generate-title/route.ts', 'chatUsagePolicy.ensureBudgetNotLow', 'chatUsagePolicy.recordFinishedUsage'],
-  ['src/server/app-api/v1/generate-tab-group-label/route.ts', 'ensureProviderBudgetNotLow', 'chargeProviderUsage'],
   ['src/server/app-api/v1/chat-suggestions/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/generate-image/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],
   ['src/server/app-api/v1/generate-video/route.ts', 'generationUsagePolicy.ensureBudgetNotLow', 'generationUsagePolicy.charge'],

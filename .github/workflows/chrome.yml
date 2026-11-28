@@ -1,21 +1,21 @@
 name: Chrome extension
 
-# Checks apps/chrome against the monorepo's current shared chat packages. The
-# extension is a workspace of the root Bun install and depends on
-# packages/overlay-chat-* through it.
-#
-# Triggers stay on the extension's own folder until it builds against the current
-# shared packages; then they widen to packages/overlay-chat-*/ and packages/overlay-ui/
-# (see internal/plans/MONOREPO_SURFACES_PLAN.md).
+# Checks apps/chrome, the side panel that frames the web app, and the bridge
+# contract it shares with the web app (packages/overlay-chrome-bridge). The
+# extension is a workspace of the root Bun install and imports nothing else.
 on:
   pull_request:
     paths:
       - apps/chrome/**
+      - packages/overlay-chrome-bridge/**
+      - bun.lock
       - .github/workflows/chrome.yml
   push:
     branches: [main]
     paths:
       - apps/chrome/**
+      - packages/overlay-chrome-bridge/**
+      - bun.lock
       - .github/workflows/chrome.yml
   workflow_dispatch:
 
@@ -47,5 +47,7 @@ jobs:
         uses: ./.github/actions/ci-dependencies
         with:
           node-version: 22
-      - name: Legacy API guard, typecheck, tests and build
+      - name: Bridge contract tests
+        run: bun run --cwd ../../packages/overlay-chrome-bridge test
+      - name: Typecheck, tests and build
         run: bun run check

@@ -19,15 +19,6 @@ const NO_STORE_HEADERS = {
 
 const SESSION_TRANSFER_TTL_MS = 90 * 1000
 
-function getAllowedChromeExtensionIds(): Set<string> {
-  return new Set(
-    (process.env.OVERLAY_CHROME_EXTENSION_IDS ?? process.env.NEXT_PUBLIC_OVERLAY_CHROME_EXTENSION_IDS ?? '')
-      .split(',')
-      .map((id) => id.trim())
-      .filter((id) => /^[a-p]{32}$/.test(id)),
-  )
-}
-
 function hashTransferTokenForLog(token: string): string {
   return createHash('sha256').update(token).digest('hex').slice(0, 12)
 }
@@ -54,18 +45,6 @@ export async function POST(request: Request) {
 
     const requestBody = await request.json().catch((_error) => ({})) as {
       codeChallenge?: unknown
-      chromeExtensionId?: unknown
-    }
-    const chromeExtensionId =
-      typeof requestBody.chromeExtensionId === 'string' ? requestBody.chromeExtensionId.trim() : ''
-    if (chromeExtensionId) {
-      const allowedIds = getAllowedChromeExtensionIds()
-      if (!allowedIds.has(chromeExtensionId)) {
-        return NextResponse.json(
-          { error: 'Chrome extension is not allowed' },
-          { status: 403, headers: NO_STORE_HEADERS },
-        )
-      }
     }
     const codeChallenge = normalizeCodeChallenge(
       typeof requestBody.codeChallenge === 'string'

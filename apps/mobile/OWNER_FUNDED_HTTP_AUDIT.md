@@ -13,9 +13,7 @@ Audit against `src/server/billing/owner-funded-operations.ts`:
 | `/api/v1/generate-video` | `services/conversationActionsService.ts` | `video:<turnId>` |
 | `/api/v1/knowledge/search` | `services/knowledgeService.ts` | New request key, or an explicit caller-owned key for retries |
 | `/api/v1/transcribe` | `ios/RecordingViewController.swift` | UUID attached when constructing the URLRequest; transport retries reuse that request |
-| `/api/v1/conversations/act/extension-plan` | No active mobile caller | Not applicable |
 | `/api/v1/generate-title` | No active mobile caller | Not applicable |
-| `/api/v1/generate-tab-group-label` | No active mobile caller | Not applicable |
 | `/api/v1/notebook-agent` | No active mobile caller | Not applicable |
 
 The registry's `GET /api/v1/chat-suggestions` does not require a mutation idempotency key.

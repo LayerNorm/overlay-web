@@ -21,6 +21,7 @@ import { DollarAmountInput } from './DollarAmountInput'
 import { WorkspaceAutoTopUpCard } from './WorkspaceAutoTopUpCard'
 import { WorkspaceUsagePanel } from './WorkspaceUsagePanel'
 import { WorkspaceMemberSpendCard } from './WorkspaceMemberSpendCard'
+import { navigateToExternalFlow } from '@/components/chrome/chrome-extension'
 
 
 /** PR previews (pr-<n>.preview.overlay.works) offer a card-free paid plan for testing; the server enforces it too. */
@@ -135,7 +136,7 @@ function useWorkspaceBilling(client: WorkspaceManagementClient, workspace: Works
     try {
       const result = await operation()
       if ('url' in result && result.url) {
-        window.location.assign(result.url)
+        navigateToExternalFlow(result.url)
         return
       }
       toast.success('Billing settings updated.')
@@ -270,7 +271,7 @@ function WorkspaceUpgradeDialog({
         ...currentLegalAcceptancePayload(),
       })
       if (!url) throw new Error('Could not start workspace checkout.')
-      window.location.assign(url)
+      navigateToExternalFlow(url)
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Could not start workspace checkout.')
     } finally {

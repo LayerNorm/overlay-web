@@ -1,6 +1,6 @@
 # Chrome extension: full parity, and a browser agents can use
 
-Status: Proposed (2026-11-27). Waiting for owner approval of this plan and its mockup; no production code written.
+Status: Approved 2026-11-28 (web-in-panel). Phase 1 implemented on `codex/chrome-extension-parity`, in review, not merged; Phases 2–5 not started.
 
 Mockup: `internal/plans/mockups/chrome-extension.html` (Chrome window, page consent bar, controlled-tab
 pill, and the real app at side-panel width from `chrome-extension-app.html`, feature `chrome-extension`).
@@ -21,9 +21,10 @@ handoff sign-in limited to `getoverlay.io`/`localhost:3000`, and a retired `/api
 not build: the side panel imports `MessageList`, which `@overlay/chat-react` no longer exports, so the required
 check "Chrome extension typecheck, test and build" fails on main (Monorepo Phase 3).
 
-What it has that is worth keeping: the content-script page actions (`src/content/index.ts`: inspect, find,
+What it had that is worth keeping: the content-script page actions (`src/content/index.ts`: inspect, find,
 click, type, press, select, scroll, hover, wait, drag), tab and window operations, tab groups, the control HUD
-and tab capture.
+and tab capture. Phase 1 deletes the old client with them; Phase 3 restores what it needs from
+`apps/chrome/src/content/index.ts` and `src/background/runtime.ts` at `369a28026`.
 
 ## Decision 1: the side panel loads the web app (recommended)
 
@@ -40,19 +41,26 @@ matches web chat because it *is* web chat.
 What it needs:
 
 - A fixed extension id (manifest `key`) so the web app can allow exactly that origin:
-  `frame-ancestors 'self' chrome-extension://<id>` in `src/proxy.ts` and an `X-Frame-Options` exception in
-  `next.config.ts`, only for `/app` requests carrying `surface=chrome`. Preview origins
-  (`*.preview.overlay.works`) and `localhost:3000` are allowed for QA.
+  `frame-ancestors 'self' chrome-extension://<id>` in `src/proxy.ts`. As built, this applies to every page (only
+  that extension can frame the app), and the app detects the panel from `location.ancestorOrigins` instead of a
+  `surface=chrome` parameter, which a full reload would lose. An enforced `frame-ancestors` policy makes browsers
+  ignore `X-Frame-Options`, so that header stays. Preview and local builds of the extension frame their own
+  origin (`VITE_OVERLAY_APP_ORIGIN`).
 - Session: the framed app uses the normal `overlay_session` cookie. Chrome treats a frame inside an extension
   page with host permission for that site as first-party, so the person's existing overlay.works sign-in
   works and sign-in opens in a normal tab (WorkOS does not run framed). **Spike first (Phase 1, day one):**
   confirm the Lax cookie and unpartitioned storage in the framed app on Chrome stable. If it fails, fall back to
-  Decision 1b.
+  Decision 1b. **Result (2026-11-28, Chromium 1228):** with host permission the `SameSite=Lax` cookie reaches
+  the framed document and its `fetch` calls and `localStorage` is shared with the top-level site; without host
+  permission the cookie is dropped.
 - Narrow layout: the side panel is 360–500 px wide, so the app uses its production narrow layout (drawer
   navigation, no 60 px rail), which already exists for small windows. `surface=chrome` only hides what makes no
-  sense in a side panel (desktop download prompts) and shows Settings → Browser.
+  sense in a side panel (desktop download prompts) and shows Settings → Browser. As built there were no desktop
+  download prompts in the app to hide; flows that leave Overlay (Stripe Checkout and portal, GitHub App, Slack
+  install) open in a new tab through `navigateToExternalFlow`, since those sites refuse framing.
 - The bridge (`packages/overlay-chrome-bridge`, typed like the desktop bridge): `page.context` (active tab
-  URL, title, selection, for "Use this page" in the composer), `browser.status`, `browser.connect`,
+  URL, title, selection, for "Use this page" in the composer; built as `page.current` plus `page.context` and an
+  "Add this page" row in the + menu that attaches the tab as a Markdown file), `browser.status`, `browser.connect`,
   `browser.sites` (list, revoke), `browser.stop`. The framed origin is checked on both sides.
 
 **Decision 1b (fallback, not recommended):** keep a native side panel and port it to `@overlay/chat-react`
@@ -195,9 +203,9 @@ which no server setting can skip.
 
 | Phase | Scope | Status |
 | --- | --- | --- |
-| 1. Web app in the side panel | Cookie/framing spike; fixed extension id; side panel frames `overlay.works/app?surface=chrome`; `frame-ancestors`/`X-Frame-Options` for that origin; chrome bridge package with `page.context`; delete the old side panel, local conversation store, planner loop, token handoff and `extension-plan` route; workflow widened to `packages/overlay-chat-*`, `packages/overlay-ui`, the bridge package and `bun.lock`; required check green (closes Monorepo Phase 3) | Not started |
+| 1. Web app in the side panel | Cookie/framing spike; fixed extension id; side panel frames `overlay.works/app`; `frame-ancestors` for that origin; chrome bridge package with `page.context`; signed-out home `/auth/chrome`; external flows in a new tab; delete the old side panel, local conversation store, planner loop, token handoff, `extension-plan` and `generate-tab-group-label` routes; workflow widened to the bridge package and `bun.lock` (the extension imports no chat package any more); required check green (closes Monorepo Phase 3) | Implemented, in review; not merged |
 | 2. Browser channel | `browser` environment kind and `browserTools` capability; `browser` request kind; `LocalComputerService` by kind; enrollment from Settings → Browser and first run; extension key, poller, heartbeat, revoke; Settings → Browser (switch, Sites, Remove) | Not started |
-| 3. Tool and consent | `chrome_browser` tool, group, approvals, tool rows, exposure; executor actions on top of the existing content-script actions; agent tab groups and window; site approval bar; control pill and Stop; credential and payment refusal; downloads confirmation; console and network | Not started |
+| 3. Tool and consent | `chrome_browser` tool, group, approvals, tool rows, exposure; executor actions restored from the old content-script actions (deleted in Phase 1, see above); agent tab groups and window; site approval bar; control pill and Stop; credential and payment refusal; downloads confirmation; console and network | Not started |
 | 4. End-to-end QA and docs | Preview QA with the unpacked extension in Chrome: an agent run started on web and on desktop drives a real tab (consent, Stop, refusal, download); Playwright extension e2e in CI; docs below | Not started |
 | 5. Distribution | Chrome Web Store listing and review, store id in `frame-ancestors`, update channel | Not started |
 

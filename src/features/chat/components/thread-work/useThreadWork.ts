@@ -10,6 +10,7 @@ import { useThisComputer } from '@/components/desktop/useThisComputer'
 import {
   applyComputerChoice, applyFolderChoice, type ThreadComputer, type ThreadFolder, type ThreadWork,
 } from '@/shared/agents/thread-work'
+import { navigateToExternalFlow } from '@/components/chrome/chrome-extension'
 
 /**
  * Where an agent thread runs and the folder it works in (internal/develop/thread-folders.md). A thread runs on the
@@ -119,7 +120,7 @@ export function useThreadWork(args: { workspaceId: string | null; agentId: strin
 
   const connectGitHub = useCallback(() => {
     if (!workspaceId) return
-    window.location.assign(overlayAppClient.github.connectUrl(workspaceId, `${window.location.pathname}${window.location.search}`))
+    navigateToExternalFlow(overlayAppClient.github.connectUrl(workspaceId, `${window.location.pathname}${window.location.search}`))
   }, [workspaceId])
 
   return {

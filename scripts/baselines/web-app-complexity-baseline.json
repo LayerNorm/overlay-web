@@ -449,12 +449,6 @@
       "recordedAt": "2026-09-11T05:17:27.991Z"
     },
     {
-      "file": "src/server/app-api/v1/conversations/act/extension-plan/route.ts",
-      "loc": 488,
-      "complexity": 27,
-      "recordedAt": "2026-09-11T05:17:27.991Z"
-    },
-    {
       "file": "src/server/app-api/v1/conversations/message/route.ts",
       "loc": 272,
       "complexity": 60,
@@ -1394,13 +1388,6 @@
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },
     {
-      "file": "src/app/api/v1/conversations/act/extension-plan/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 7,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
       "file": "src/app/api/v1/conversations/act/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 7,
@@ -1628,13 +1615,6 @@
       "file": "src/app/api/v1/generate-image/route.ts",
       "layer": "src/app/api/v1 wrappers",
       "loc": 7,
-      "classification": "keep",
-      "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
-    },
-    {
-      "file": "src/app/api/v1/generate-tab-group-label/route.ts",
-      "layer": "src/app/api/v1 wrappers",
-      "loc": 6,
       "classification": "keep",
       "reason": "Framework entrypoint discovered by file-system routing or runtime hooks."
     },

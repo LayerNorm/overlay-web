@@ -11,7 +11,7 @@ backend.
 | Operator console | `apps/admin` | Next.js | `admin.overlay.works`; see `admin-console.md` |
 | Desktop | `apps/desktop` | Electron | Mac app that loads the web app and adds OS integrations; see `desktop-web-shell.md` |
 | Mobile | `apps/mobile` | Expo / React Native | iOS app with native screens over the same backend |
-| Chrome extension | `apps/chrome` | Vite, MV3 side panel | Browser side panel chat with tab context and approvals |
+| Chrome extension | `apps/chrome` | Vite, MV3 side panel | Side panel that frames the web app, as desktop loads it, and adds "Add this page"; see `chrome-extension.md` |
 
 ## Rules
 
@@ -36,7 +36,7 @@ currently 1.4.5) is the package manager and script runner; every app still runs 
 runtime (Node.js for Next.js and scripts, Convex's runtime, Electron, Hermes).
 
 - `bun install` at the root installs web, `packages/*` and every app from `bun.lock`.
-  Workspaces: `packages/*`, `apps/admin`, `apps/chrome` (+ `apps/chrome/packages/*`),
+  Workspaces: `packages/*`, `apps/admin`, `apps/chrome`,
   `apps/desktop`, `apps/mobile`. No app has a lockfile of its own; `apps/desktop/agent-host-bundle`
   keeps an npm lockfile because it pins the published Agent Host the app ships, and
   `examples/` are standalone.
@@ -65,7 +65,7 @@ runtime (Node.js for Next.js and scripts, Convex's runtime, Electron, Hermes).
 | Web | `bun run lint`, `bun run typecheck`, `node scripts/ci/run-all-tests.mjs` | `Security Checks` (every PR and merge group; required) | Native Vercel Git deployment from `main` (Vercel installs with Bun from `bun.lock`) |
 | Desktop | in `apps/desktop`: `bun run lint && bun run test && bun run build`, `bun run test:e2e` | `Desktop app` (`apps/desktop/**`, the bridge package, `bun.lock`) on macOS | `Desktop release (macOS)`: manual, from one full source SHA; publishes `desktop-v<version>` to this repository's Releases |
 | Mobile | `bun run --filter '@layernorm/overlay-agent-*' build` once, then in `apps/mobile`: `bun run check`, `node scripts/lint-mobile.cjs`, node tests, `bun run test:native-transcript`, `bunx expo export` + asset verification | `Mobile app` (`apps/mobile/**`, `packages/**`, `src/shared/**`, `src/features/automations/**`, `convex/**`, `bun.lock`) | EAS Build from `apps/mobile`: EAS installs the workspace with Bun (`bun` in `eas.json`); `eas-build-post-install` builds the agent packages and shared Markdown CSS |
-| Chrome | in `apps/chrome`: `bun run check` | `Chrome extension` (`apps/chrome/**`) | Built `dist/` loaded unpacked; no store release yet |
+| Chrome | in `apps/chrome`: `bun run check`; bridge contract: `bun run --cwd packages/overlay-chrome-bridge test` | `Chrome extension` (`apps/chrome/**`, `packages/overlay-chrome-bridge/**`, `bun.lock`) | Built `dist/` loaded unpacked (frames overlay.works; `VITE_OVERLAY_APP_ORIGIN` selects a preview or localhost); no store release yet |
 
 Every workflow installs through `.github/actions/ci-dependencies` (pinned Node.js, Bun from
 `package.json`, Bun's download cache, `bun install --frozen-lockfile`); signed desktop
@@ -98,12 +98,6 @@ releases install without a restored cache.
   by word, so mounted transcript tests that grow a response must wait for the viewport to
   settle (`waitForSettledViewport`) before reading pointer targets or scroll baselines.
 
-## Known gaps
-
-- The Chrome side panel imports `MessageList`, which `@overlay/chat-react` no longer
-  exports, so the extension does not typecheck or build. (Its React types now match web's
-  through the shared install.) Its workflow runs only on `apps/chrome/**` until it is ported.
-
 ## Feature parity
 
 Mobile is a companion for workspaces that already exist (owner decision, 2026-11-27). It
@@ -112,20 +106,24 @@ picker, prices or checkout. A paid workspace keeps its entitlements on mobile, a
 set up and pay on web or desktop. Accepting an invitation to an existing workspace is fine.
 
 Update this table when a feature lands on, or is removed from, any surface. "Web" means
-the desktop app too: it renders the web app, adding only the native rows marked below.
+the desktop app too: it renders the web app, adding only the native rows marked below. The
+Chrome side panel also renders the web app (`chrome-extension.md`), so it has every web row
+except the desktop-only ones; flows that leave Overlay (checkout, GitHub and Slack installs)
+open in a new tab there.
 
 | Feature | Web / Desktop | Mobile | Chrome |
 | --- | --- | --- | --- |
-| Agents and agent threads | Yes | Yes | No |
-| Chats (personal) | Yes | Yes | Side panel chat |
-| Rooms, channels and DMs | Yes | Yes | No |
-| Work (tasks) | Yes | Yes | No |
-| Files, notes and memories | Yes | Yes | No |
-| Automations | Yes | Yes | No |
-| Extensions / tools and MCP | Yes | Yes (Tools) | No |
-| Workspace and Personal modes | Yes | Yes | No |
+| Agents and agent threads | Yes | Yes | Yes |
+| Chats (personal) | Yes | Yes | Yes |
+| Rooms, channels and DMs | Yes | Yes | Yes |
+| Work (tasks) | Yes | Yes | Yes |
+| Files, notes and memories | Yes | Yes | Yes |
+| Automations | Yes | Yes | Yes |
+| Extensions / tools and MCP | Yes | Yes (Tools) | Yes |
+| Workspace and Personal modes | Yes | Yes | Yes |
 | Voice input | Desktop dictation | Yes | No |
 | Push notifications while closed (mentions, DMs, approvals) | No | Yes (`mobile-push.md`) | No |
-| Browser tab context and actions | No | No | Yes |
+| Attach the current browser tab ("Add this page") | No | No | Yes |
+| Agents use this browser | No | No | Planned (`CHROME_EXTENSION_PARITY_PLAN.md`) |
 | This Mac (local computer), private threads, first-run setup | Desktop only | No | No |
-| Create a workspace, first-run setup conversation, plans and checkout | Yes | No (companion) | No |
+| Create a workspace, first-run setup conversation, plans and checkout | Yes | No (companion) | Yes (checkout in a new tab) |
