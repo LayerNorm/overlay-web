@@ -52,7 +52,7 @@ export async function previewBuildEnvironment(env, { fetchImpl = fetch,
 export function buildPlan(env) {
   // Existing PR heads still expect the old lane name. New heads use preview.
   if (!['preview', 'staging'].includes(env.OVERLAY_RELEASE_LANE)) {
-    return { command: 'npm', args: ['run', 'build'], env: { ...env }, target: 'web only' }
+    return { command: 'bun', args: ['run', 'build'], env: { ...env }, target: 'web only' }
   }
 
   const childEnv = { ...env }

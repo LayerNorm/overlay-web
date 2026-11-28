@@ -16,9 +16,9 @@ const run = (command, args, env = process.env) =>
   execFileSync(command, args, { env, stdio: 'inherit' })
 const security = (args) => execFileSync('/usr/bin/security', args, { stdio: 'pipe' })
 try {
-  run('npm', ['run', 'build'])
+  run('bun', ['run', 'build'])
   stage = 'bundle the agent host'
-  run('npm', ['run', 'build:agent-host'])
+  run('bun', ['run', 'build:agent-host'])
   const env = { ...process.env }
   if (env.CSC_LINK) {
     stage = 'prepare signing keychain'
@@ -60,7 +60,7 @@ try {
     delete env.CSC_KEY_PASSWORD
   }
   stage = 'package, sign and notarize'
-  run('npx', ['electron-builder', '--mac', '--arm64', '--publish', 'never'], env)
+  run('bunx', ['electron-builder', '--mac', '--arm64', '--publish', 'never'], env)
   if (process.env.CI === 'true' && process.env.CSC_LINK) {
     stage = 'signed clean-profile and upgrade acceptance'
     run(process.execPath, ['scripts/qa/smoke-signed-app.mjs'], {

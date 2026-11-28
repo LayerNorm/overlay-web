@@ -28,7 +28,12 @@ plans
 renders
 transcripts
 
-# The web deployment never needs the other apps.
-apps/desktop
-apps/mobile
-apps/chrome
+# The web deployment never needs the other apps' code, but the one Bun install
+# (bun.lock) needs every workspace's package.json.
+apps/desktop/*
+!apps/desktop/package.json
+apps/mobile/*
+!apps/mobile/package.json
+apps/chrome/*
+!apps/chrome/package.json
+!apps/chrome/packages

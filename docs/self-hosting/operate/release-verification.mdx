@@ -5,7 +5,7 @@ description: "Checks to run before shipping web app or self-hosting changes."
 Run this gate before handing an on-prem build to a customer or merging runtime/provider changes toward production:
 
 ```bash
-npm run check:phase6
+bun run check:phase6
 ```
 
 The command runs config validation, docs health checks, license checks, shared/module boundary checks, provider checks, targeted enterprise route tests, typecheck, and `next build`.
@@ -13,7 +13,7 @@ The command runs config validation, docs health checks, license checks, shared/m
 For faster local iteration on only the enterprise route/provider contract:
 
 ```bash
-npm run test:phase6-routes
+bun run test:phase6-routes
 ```
 
 ## Required On-Prem Shape
@@ -106,4 +106,4 @@ Mobile viewport:
 
 ## Release Sign-Off
 
-Record the `npm run check:phase6` result and the manual UI gate result in the release notes for any enterprise/on-prem distribution.
+Record the `bun run check:phase6` result and the manual UI gate result in the release notes for any enterprise/on-prem distribution.

@@ -157,8 +157,8 @@ share a native-shell guard (`scripts/ci/desktop-web-shell-boundary.mjs`): duplic
 desktop renderers/provider clients remain retired, the desktop must link the shared
 bridge package rather than keep a copy, and its Agent Host pin must match web enrollment.
 
-Run bridge package tests, web type/lint checks and desktop `npm test`, `npm run
-build`, `npm run check:no-provider-sdks`, and `npm run test:e2e`. Electron Playwright
+Run bridge package tests, web type/lint checks and desktop `bun run test`, `bun run
+build`, `bun run check:no-provider-sdks`, and `bun run test:e2e`. Electron Playwright
 uses throwaway profiles. The macOS `Desktop app` workflow (`.github/workflows/desktop.yml`)
 runs the Electron boundary fixture and unsigned packaging whenever `apps/desktop/**` or the
 bridge package changes; `Desktop release (macOS)` signs, notarizes and publishes

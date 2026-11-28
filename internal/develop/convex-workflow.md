@@ -116,10 +116,10 @@ and server APIs are unchanged until each consumer migrates.
 For ordinary local web work against the development Convex backend, run Next.js without deploying Convex from a feature worktree:
 
 ```bash
-npm run dev
+bun run dev
 ```
 
-`npm run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Native Vercel production deployment does not push Convex.
+`bun run dev:with-convex` pushes the selected dev backend before starting Next.js. Use it only for an explicitly selected engineer-owned deployment. Native Vercel production deployment does not push Convex.
 
 ## Source imports and typechecks
 
@@ -418,7 +418,7 @@ batch rather than running one unbounded mutation.
 Use the production script only from the clean canonical `main` worktree after the matching main web deployment is live:
 
 ```bash
-npm run convex:push:prod
+bun run convex:push:prod
 ```
 
 For Preview and Production checks, see [Preview and Production QA](./worktree-staging-qa.md).

@@ -13,7 +13,8 @@
       },
       "ios": {
         "simulator": false
-      }
+      },
+      "bun": "1.4.5"
     },
     "preview": {
       "environment": "preview",
@@ -24,7 +25,8 @@
       },
       "ios": {
         "enterpriseProvisioning": "adhoc"
-      }
+      },
+      "bun": "1.4.5"
     },
     "simulator-smoke": {
       "extends": "production",
@@ -44,7 +46,8 @@
       "ios": {
         "image": "macos-sequoia-15.6-xcode-26.2",
         "resourceClass": "m-medium"
-      }
+      },
+      "bun": "1.4.5"
     }
   },
   "submit": {

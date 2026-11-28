@@ -24,8 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overlay/llm-gateway": "file:../overlay-llm-gateway",
-    "@overlay/tools-core": "file:../overlay-tools-core"
+    "@overlay/llm-gateway": "workspace:*",
+    "@overlay/tools-core": "workspace:*"
   },
   "devDependencies": {
     "tsx": "^4.8.1",

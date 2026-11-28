@@ -15,7 +15,7 @@ test('auth settings are installed on only the claimed PR backend before build/up
     let keyFile
     const result = runHostedWebBuild(env, (command, args) => {
       calls.push(command)
-      if (command === 'npm') return { status: 0 }
+      if (command === 'bun') return { status: 0 }
       assert.equal(command, './node_modules/.bin/convex')
       assert.equal(args[args.indexOf('--deployment') + 1], 'preview/pr-123')
       authFile = args[args.indexOf('--from-file') + 1]
@@ -27,7 +27,7 @@ test('auth settings are installed on only the claimed PR backend before build/up
       return { status: fail ? 1 : 0 }
     })
     assert.equal(result, fail ? 1 : 0)
-    assert.deepEqual(calls, fail ? ['./node_modules/.bin/convex'] : ['./node_modules/.bin/convex', 'npm'])
+    assert.deepEqual(calls, fail ? ['./node_modules/.bin/convex'] : ['./node_modules/.bin/convex', 'bun'])
     assert.equal(existsSync(authFile), false)
     assert.equal(existsSync(keyFile), false)
   }

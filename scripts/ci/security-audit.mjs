@@ -1,15 +1,22 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 /**
- * Production dependency audit gate (`npm run security:audit`).
+ * Production dependency audit gate (`bun run security:audit`).
  *
- * Fails on any high or critical advisory in production dependencies unless the
- * exact package install path is listed in AUDIT_EXCEPTIONS below. Exceptions are
- * narrow (one install path, named advisories), carry a reason, and expire: an
+ * `bun audit` checks every package in the shared lockfile, including the dev
+ * tooling of every app, and cannot leave dev dependencies out. This gate walks
+ * bun.lock from the chosen workspaces' production dependencies, keeps the exact
+ * versions they install, and fails on any high or critical advisory affecting one
+ * of those versions unless it is listed in AUDIT_EXCEPTIONS below. Exceptions are
+ * narrow (one package version, named advisories), carry a reason, and expire: an
  * expired exception fails the gate so it cannot silently become permanent.
- * Fix with overrides or upgrades whenever possible; add an exception only when
- * a dependency pins the vulnerable version in a way overrides cannot reach.
+ * Fix with overrides or upgrades whenever possible.
+ *
+ * Usage: bun scripts/ci/security-audit.mjs [--workspace <dir>]...
+ * Without --workspace it audits the web app: the root, apps/admin and every
+ * workspace package they reach.
  */
 import { spawnSync } from 'node:child_process'
+import { productionPackages, readBunLock, REPOSITORY_ROOT } from './bun-lock.mjs'
 
 const TODAY = new Date().toISOString().slice(0, 10)
 
@@ -18,54 +25,54 @@ const TODAY = new Date().toISOString().slice(0, 10)
 // build config: Sentry's webpack wrapping loader (@rollup/plugin-commonjs) and
 // the Workflow builder's file discovery (tinyglobby). No production request path
 // passes user input to them. Remove when a patched picomatch is published.
-const PICOMATCH_REDOS = {
-  advisories: ['GHSA-fc5q-39xc-vjpf'],
-  expires: '2026-12-01',
-  reason: 'Build-time glob matching on our own config patterns; no patched picomatch exists yet.',
-}
-
 const AUDIT_EXCEPTIONS = [
-  { path: 'node_modules/@rollup/plugin-commonjs/node_modules/picomatch', ...PICOMATCH_REDOS },
-  { path: 'node_modules/@rollup/pluginutils/node_modules/picomatch', ...PICOMATCH_REDOS },
-  { path: 'node_modules/tinyglobby/node_modules/picomatch', ...PICOMATCH_REDOS },
+  {
+    package: 'picomatch@4.0.7',
+    advisories: ['GHSA-fc5q-39xc-vjpf'],
+    expires: '2026-12-01',
+    reason: 'Build-time glob matching on our own config patterns; no patched picomatch exists yet.',
+  },
 ]
 
 const BLOCKING = new Set(['high', 'critical'])
 
-const run = spawnSync('npm', ['audit', '--omit=dev', '--json'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
+const args = process.argv.slice(2)
+const selected = []
+for (let i = 0; i < args.length; i++) if (args[i] === '--workspace') selected.push(args[++i].replace(/\/$/, ''))
+const roots = selected.length > 0 ? selected : ['', 'apps/admin']
+const installed = productionPackages(readBunLock(), roots)
+
+const audit = spawnSync('bun', ['audit', '--json'], { cwd: REPOSITORY_ROOT, encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 })
 let report
 try {
-  report = JSON.parse(run.stdout)
-} catch (_error) {
-  console.error('npm audit did not return JSON:\n', run.stderr || run.stdout)
+  report = JSON.parse(audit.stdout)
+} catch {
+  console.error('bun audit did not return JSON:\n', audit.stderr || audit.stdout)
   process.exit(1)
 }
 
 const failures = []
 const allowed = []
-for (const [name, vulnerability] of Object.entries(report.vulnerabilities ?? {})) {
-  // Advisories attach to the vulnerable package itself; parents that only
-  // depend on it carry string `via` entries and are covered by that package.
-  const advisories = vulnerability.via.filter((via) => typeof via === 'object' && BLOCKING.has(via.severity))
-  if (advisories.length === 0) continue
-  const ids = [...new Set(advisories.map((via) => via.url.split('/').pop()))]
-  for (const path of vulnerability.nodes) {
-    const exception = AUDIT_EXCEPTIONS.find((entry) => entry.path === path)
-    const uncovered = ids.filter((id) => !exception?.advisories.includes(id))
-    if (!exception || uncovered.length > 0) {
-      failures.push(`${name} at ${path}: ${(exception ? uncovered : ids).join(', ')}`)
-    } else if (exception.expires < TODAY) {
-      failures.push(`${name} at ${path}: exception expired ${exception.expires} (${ids.join(', ')})`)
-    } else {
-      allowed.push(`${name} at ${path} until ${exception.expires}: ${ids.join(', ')}`)
-    }
+for (const [name, advisories] of Object.entries(report)) {
+  for (const [id, { name: installedName, version, chains }] of installed) {
+    if (installedName !== name) continue
+    const hits = advisories.filter((a) => BLOCKING.has(a.severity) && Bun.semver.satisfies(version, a.vulnerable_versions))
+    if (hits.length === 0) continue
+    const ids = [...new Set(hits.map((a) => a.url.split('/').pop()))]
+    const exception = AUDIT_EXCEPTIONS.find((entry) => entry.package === id)
+    const uncovered = ids.filter((advisory) => !exception?.advisories.includes(advisory))
+    const via = chains.join('\n      ')
+    if (!exception || uncovered.length > 0) failures.push(`${id}: ${(exception ? uncovered : ids).join(', ')}\n      ${via}`)
+    else if (exception.expires < TODAY) failures.push(`${id}: exception expired ${exception.expires} (${ids.join(', ')})`)
+    else allowed.push(`${id} until ${exception.expires}: ${ids.join(', ')}`)
   }
 }
 
 for (const entry of allowed) console.log(`allowed (reviewed exception) ${entry}`)
+const scope = roots.map((dir) => dir || '(root)').join(', ')
 if (failures.length > 0) {
-  console.error('High or critical production advisories without a valid exception:')
+  console.error(`High or critical production advisories without a valid exception (${scope}):`)
   for (const failure of failures) console.error(`  ${failure}`)
   process.exit(1)
 }
-console.log('No unexcepted high or critical production advisories.')
+console.log(`No unexcepted high or critical production advisories (${installed.size} packages from ${scope}).`)

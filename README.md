@@ -25,7 +25,7 @@ The workspace is the shared layer between people and agents. Conversations, note
 - [API Reference](docs/developer/api/overview.mdx) — generated from `src/shared/schemas/api-boundary.ts`.
 - [Security policy](SECURITY.md) — reporting, launch controls, and secret handling.
 
-Run `npm run docs:check` before publishing docs changes.
+Run `bun run docs:check` before publishing docs changes.
 
 ## Powered By
 
@@ -166,30 +166,30 @@ Overlay keeps provider adapters behind a common gateway so the collaboration mod
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Configure environment
 cp .env.example .env.local
 # Edit .env.local with your credentials
 
 # Run development server
-npm run dev
+bun run dev
 ```
 
 For complete environment setup, see [`docs/developer/contribute/run-locally.mdx`](docs/developer/contribute/run-locally.mdx) and [`docs/self-hosting/configure/environment.mdx`](docs/self-hosting/configure/environment.mdx).
 
 ### Convex Workflow
 
-Convex deployments are environment-specific. Use `npm run convex:push:dev` only with an explicitly selected engineer-owned dev backend. Use `npm run convex:push:prod` only from a clean canonical `main` worktree after its matching web deployment is live. Feature worktrees must not deploy shared dev or customer production Convex; hosted PR builds deploy only their scoped preview backend.
+Convex deployments are environment-specific. Use `bun run convex:push:dev` only with an explicitly selected engineer-owned dev backend. Use `bun run convex:push:prod` only from a clean canonical `main` worktree after its matching web deployment is live. Feature worktrees must not deploy shared dev or customer production Convex; hosted PR builds deploy only their scoped preview backend.
 
 ## Available Commands
 
 | Command | Purpose |
 |---------|---------|
-| `npm run dev` | Run the Next.js development server |
-| `npm run build` | Create a production build |
-| `npm run convex:push:prod` | Push Convex changes to production |
-| `npm run convex:push:dev` | Push Convex changes to dev |
+| `bun run dev` | Run the Next.js development server |
+| `bun run build` | Create a production build |
+| `bun run convex:push:prod` | Push Convex changes to production |
+| `bun run convex:push:dev` | Push Convex changes to dev |
 
 ## Security
 

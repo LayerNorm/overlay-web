@@ -18,7 +18,7 @@ A development build gives you full access to all native modules (including `@10p
 ### Step 1 — Install Dependencies
 
 ```bash
-npm install
+bun install
 ```
 
 ### Step 2 — Build & Install the Development Client
@@ -77,7 +77,7 @@ Use this when you don't need native modules beyond the Expo SDK. Some features (
 ### Steps
 
 ```bash
-npm install
+bun install
 npx expo start --go
 ```
 

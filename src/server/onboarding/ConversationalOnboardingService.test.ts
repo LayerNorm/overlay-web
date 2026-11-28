@@ -451,7 +451,7 @@ test('a verified first task completes onboarding durably', async () => {
   assert.deepEqual(retry, result)
   assert.equal(f.messages.length, messageCount)
   assert.equal((await f.service.get('user-1', 'workspace-1')).completed, true)
-  assert.equal(f.messages.at(-1)?.content, "Your first task is now in Work. I'll keep you updated there.")
+  assert.equal(f.messages.at(-1)?.content, "Your first task is running. You can follow it in Work, and ask me anything here.")
 })
 
 test('a lost Start response recovers from the durable assignment even after billing closes', async () => {
@@ -484,7 +484,7 @@ test('GET recovers a completed final transcript outbox after a write failure', a
   assert.equal(result.session?.taskId, 'task-1')
   assert.deepEqual(f.messages.slice(-2).map((message) => message.content), [
     'Review the launch plan',
-    "Your first task is now in Work. I'll keep you updated there.",
+    "Your first task is running. You can follow it in Work, and ask me anything here.",
   ])
 })
 
@@ -510,7 +510,7 @@ test('personal onboarding keeps the existing persisted intro', async () => {
   assert.equal(f.messages[0].content, "Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving.\n\nWhat should I call you?")
 })
 
-test('Open Work completes an unpaid saved draft without executing, validates ownership, and is replayable', async () => {
+test('Finish setup completes an unpaid saved draft without executing, validates ownership, and is replayable', async () => {
   const f = fixture(false)
   let result = await advanceToTask(f)
   result = await act(f, { action: 'draft_task', revision: result.session!.revision, value: 'Review the launch plan' })
