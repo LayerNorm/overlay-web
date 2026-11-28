@@ -202,7 +202,7 @@ export function DesktopDownloadPage({ downloadsEnabled, release, releaseError, l
   const offered = downloadsEnabled && !loading ? release : null
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         {offered
           ? <ReleaseHead release={offered} />
           : <UnavailableHead downloadsEnabled={downloadsEnabled} releaseError={releaseError} loading={loading} />}

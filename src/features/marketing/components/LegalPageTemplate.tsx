@@ -30,7 +30,7 @@ export function LegalPageTemplate({
 }) {
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         <MarketingPageHead label={label} title={title} lead={intro}>
           <p className="meta-line">Last updated: {updated}</p>
           <p className="note-card">

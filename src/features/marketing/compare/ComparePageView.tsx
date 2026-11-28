@@ -22,7 +22,7 @@ export function ComparePageView({ page }: { page: ComparePage }) {
 
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         <MarketingPageHead label="Compare" title={page.title} lead={page.answer}>
           <p className="meta-line">Facts checked {page.checked}. Competitor details come from their public pages, linked below.</p>
           <div className="actions" style={{ justifyContent: "flex-start" }}>
@@ -111,7 +111,7 @@ export function ComparePageView({ page }: { page: ComparePage }) {
 export function CompareIndexView({ pages }: { pages: Pick<ComparePage, "slug" | "title" | "description">[] }) {
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         <MarketingPageHead
           label="Compare"
           title="Overlay compared"
