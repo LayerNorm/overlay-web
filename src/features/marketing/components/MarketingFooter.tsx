@@ -25,7 +25,7 @@ const FOOTER_COLUMNS: Array<{ title: string; links: FootLink[] }> = [
       { label: "Agents", href: "/home#control-plane" },
       { label: "Platforms", href: "/home#get-overlay" },
       { label: "Computers", href: "/home#ai-employees" },
-      { label: "Automations", href: "/home#deploy" },
+      { label: "Automations", href: "/home#self-driving" },
       { label: "Pricing", href: "/pricing" },
       { label: "Desktop app", href: "/download" },
     ],
