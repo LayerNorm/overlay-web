@@ -1,0 +1,252 @@
+<!doctype html>
+<!--
+  Chrome extension mockup (internal/plans/CHROME_EXTENSION_PARITY_PLAN.md).
+  The side panel is the production app from chrome-extension-app.html
+  (MOCKUP_FEATURE=chrome-extension node internal/plans/mockups/overlay-app/build.mjs).
+  The Chrome window and the sample site are stand-ins; the bar at the top, the pill and the
+  download bar are the proposed in-page UI the extension draws over a page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Overlay | Chrome extension mockup</title>
+<style>
+  :root {
+    --bg: #ecedef; --frame: #dfe1e5; --tab: #ffffff; --omni: #f1f3f4; --text: #1f1f1f; --muted: #5f6368; --line: #e3e3e3;
+    --page: #ffffff; --page-text: #1d1d1f; --page-muted: #6b6b70; --page-line: #ececee;
+    --ui: #ffffff; --ui-text: #1a1a1a; --ui-muted: #6b6b6b; --ui-line: #e5e5e5; --ui-hover: #f4f4f4;
+    --primary: #1a1a1a; --primary-text: #ffffff; --group: #188038; --edge: rgba(24, 128, 56, .55);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", sans-serif;
+  }
+  :root[data-theme="dark"] {
+    --bg: #161616; --frame: #202124; --tab: #35363a; --omni: #282828; --text: #e8eaed; --muted: #9aa0a6; --line: #3c3c3c;
+    --page: #ffffff; --page-text: #1d1d1f; --page-muted: #6b6b70; --page-line: #ececee;
+    --ui: #262626; --ui-text: #ededed; --ui-muted: #a3a3a3; --ui-line: #3a3a3a; --ui-hover: #303030;
+    --primary: #3a3a3a; --primary-text: #f5f5f5; --group: #81c995; --edge: rgba(129, 201, 149, .6);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); }
+  body { display: flex; flex-direction: column; }
+  svg.i { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+
+  /* Mockup controls (not product UI) */
+  .controls { display: flex; align-items: center; gap: 6px; padding: 10px 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
+  .controls b { font-weight: 500; color: var(--text); margin-right: 4px; }
+  .controls .sep { width: 1px; height: 16px; background: var(--line); margin: 0 6px; }
+  .controls button { font: inherit; border: 1px solid var(--line); background: transparent; color: var(--text); padding: 4px 10px; border-radius: 999px; cursor: pointer; }
+  .controls button[aria-pressed="true"] { background: var(--text); color: var(--bg); border-color: var(--text); }
+
+  /* Chrome window */
+  .window { flex: 1; min-height: 0; margin: 0 16px 16px; border-radius: 10px; overflow: hidden; display: flex; flex-direction: column; background: var(--frame); box-shadow: 0 0 0 1px rgba(0,0,0,.08), 0 12px 40px rgba(0,0,0,.12); }
+  .tabstrip { height: 40px; display: flex; align-items: flex-end; gap: 2px; padding: 0 10px; }
+  .lights { display: flex; gap: 7px; align-self: center; margin-right: 14px; }
+  .lights span { width: 12px; height: 12px; border-radius: 50%; background: #ff5f57; } .lights span:nth-child(2) { background: #febc2e; } .lights span:nth-child(3) { background: #28c840; }
+  .tab { height: 32px; width: 200px; display: flex; align-items: center; gap: 8px; padding: 0 12px; border-radius: 8px 8px 0 0; color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; }
+  .tab.active { background: var(--tab); color: var(--text); }
+  .favicon { width: 16px; height: 16px; border-radius: 4px; background: #c9ccd1; flex: none; }
+  .favicon.nw { background: #23395b; }
+  .group { align-self: center; height: 22px; padding: 0 9px; border-radius: 6px; background: var(--group); color: #fff; font-size: 12px; font-weight: 500; display: flex; align-items: center; margin: 0 2px 4px 6px; }
+  :root[data-theme="dark"] .group { color: #202124; }
+  .tab.grouped { box-shadow: inset 0 -2px 0 var(--group); }
+  .toolbar { height: 42px; display: flex; align-items: center; gap: 10px; padding: 0 10px; background: var(--tab); border-bottom: 1px solid var(--line); color: var(--muted); }
+  .omnibox { flex: 1; height: 30px; border-radius: 15px; background: var(--omni); display: flex; align-items: center; gap: 8px; padding: 0 14px; color: var(--text); font-size: 13px; }
+  .omnibox .host { color: var(--muted); }
+  .ext { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; position: relative; }
+  .ext.on { background: var(--omni); color: var(--text); }
+  .badge { position: absolute; right: 2px; bottom: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--group); box-shadow: 0 0 0 2px var(--tab); }
+  .body { flex: 1; min-height: 0; display: flex; background: var(--tab); }
+
+  /* The page */
+  .viewport { flex: 1; min-width: 0; position: relative; background: var(--page); color: var(--page-text); overflow: hidden; }
+  .viewport.controlled::after { content: ""; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 2px var(--edge); }
+  .site { height: 100%; overflow: auto; font: 14px/1.5 Georgia, "Times New Roman", serif; }
+  .site header { display: flex; align-items: center; justify-content: space-between; padding: 16px 32px; background: #23395b; color: #fff; font-family: -apple-system, sans-serif; }
+  .site header strong { letter-spacing: .02em; }
+  .site header nav { display: flex; gap: 22px; font-size: 13px; opacity: .85; }
+  .site main { padding: 28px 32px 120px; font-family: -apple-system, sans-serif; }
+  .site h1 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+  .site .sub { color: var(--page-muted); margin: 0 0 20px; }
+  .site .row { display: flex; gap: 10px; margin-bottom: 14px; }
+  .site select, .site .btn { font: inherit; font-size: 13px; padding: 6px 10px; border: 1px solid #cfd3da; border-radius: 6px; background: #fff; color: inherit; }
+  .site .btn.primary { background: #23395b; color: #fff; border-color: #23395b; }
+  .site table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .site th, .site td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--page-line); }
+  .site th { color: var(--page-muted); font-weight: 500; }
+  .site .late { color: #b3261e; }
+  .site a { color: #23395b; }
+  .site tr.target td { background: rgba(24,128,56,.07); }
+
+  /* Proposed in-page UI (drawn by the extension in a closed shadow root) */
+  .ov { position: absolute; left: 50%; transform: translateX(-50%); z-index: 5; font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Inter", sans-serif; color: var(--ui-text); background: var(--ui); border: 1px solid var(--ui-line); box-shadow: 0 6px 24px rgba(0,0,0,.12); display: flex; align-items: center; gap: 10px; }
+  .ov[hidden] { display: none; }
+  .ov.ask { top: 12px; border-radius: 12px; padding: 10px 10px 10px 14px; width: min(660px, calc(100% - 32px)); }
+  .ov .msg b { white-space: nowrap; font-weight: 600; }
+  .ov.pill { bottom: 16px; border-radius: 999px; padding: 6px 6px 6px 8px; }
+  .ov .msg { flex: 1; min-width: 0; }
+  .ov .msg small { display: block; color: var(--ui-muted); font-size: 12px; }
+  .ov button { font: inherit; font-size: 12px; border-radius: 8px; padding: 5px 10px; border: 1px solid var(--ui-line); background: transparent; color: var(--ui-text); cursor: pointer; display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+  .ov button:hover { background: var(--ui-hover); }
+  .ov button.primary { background: var(--primary); color: var(--primary-text); border-color: var(--primary); }
+  .ov.pill button { border-radius: 999px; }
+  .avatar { width: 22px; height: 22px; flex: none; }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--group); flex: none; animation: blink 1.6s ease-in-out infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+  /* Chrome side panel */
+  .panel { width: 400px; flex: none; display: flex; flex-direction: column; border-left: 1px solid var(--line); background: var(--tab); }
+  .panel-head { height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; color: var(--muted); font-size: 12px; border-bottom: 1px solid var(--line); }
+  .panel-head .name { flex: 1; color: var(--text); display: flex; align-items: center; gap: 6px; }
+  .panel iframe { flex: 1; width: 100%; border: 0; background: var(--tab); }
+  .note { padding: 0 16px 12px; color: var(--muted); font-size: 12px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute">
+  <!-- Lucide icons -->
+  <symbol id="i-square" viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+  <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 24 24"><rect width="18" height="11" x="3" y="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+  <symbol id="i-left" viewBox="0 0 24 24"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></symbol>
+  <symbol id="i-right" viewBox="0 0 24 24"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></symbol>
+  <symbol id="i-rotate" viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></symbol>
+  <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></symbol>
+  <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></symbol>
+  <!-- Atlas's creature: a hexagon body with eyes, matching AgentCreature's hexagon in the app -->
+  <symbol id="atlas" viewBox="0 0 24 24"><path d="M12 2.5 20.2 7.2v9.6L12 21.5 3.8 16.8V7.2z" fill="#5b8c6e"/><circle cx="9.4" cy="11.5" r="1.5" fill="#fff"/><circle cx="14.6" cy="11.5" r="1.5" fill="#fff"/><circle cx="9.7" cy="11.7" r=".7" fill="#1a1a1a"/><circle cx="14.9" cy="11.7" r=".7" fill="#1a1a1a"/></symbol>
+  <!-- Overlay mark stand-in for the toolbar button -->
+  <symbol id="mark" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="9.6" cy="11" r="1.3" fill="currentColor"/><circle cx="14.4" cy="11" r="1.3" fill="currentColor"/></symbol>
+</svg>
+
+<div class="controls">
+  <b>Page</b>
+  <button data-state="working" aria-pressed="true">Agent working</button>
+  <button data-state="ask" aria-pressed="false">New site</button>
+  <button data-state="download" aria-pressed="false">Download</button>
+  <button data-state="idle" aria-pressed="false">Stopped</button>
+  <span class="sep"></span>
+  <b>Side panel</b>
+  <button data-panel="thread" aria-pressed="true">Thread</button>
+  <button data-panel="settings" aria-pressed="false">Settings → Browser</button>
+  <button data-panel="chats" aria-pressed="false">Chats</button>
+  <span class="sep"></span>
+  <button id="theme" aria-pressed="false">Dark</button>
+</div>
+
+<div class="window">
+  <div class="tabstrip">
+    <div class="lights"><span></span><span></span><span></span></div>
+    <div class="tab"><span class="favicon"></span>Inbox — 4 unread</div>
+    <div class="tab"><span class="favicon"></span>Q4 launch plan</div>
+    <div class="group" id="group">Atlas</div>
+    <div class="tab active grouped" id="agent-tab"><span class="favicon nw"></span><span id="tab-title">Orders · Northwind Supply</span></div>
+  </div>
+  <div class="toolbar">
+    <svg class="i"><use href="#i-left"/></svg><svg class="i"><use href="#i-right"/></svg><svg class="i"><use href="#i-rotate"/></svg>
+    <div class="omnibox"><svg class="i"><use href="#i-lock"/></svg><span><span id="url-host">northwind-supply.example</span><span class="host" id="url-path">/orders?month=2026-11</span></span></div>
+    <div class="ext on" title="Overlay"><svg class="i" style="width:18px;height:18px"><use href="#mark"/></svg><span class="badge" id="badge"></span></div>
+  </div>
+  <div class="body">
+    <div class="viewport controlled" id="viewport">
+      <div class="site">
+        <header><strong>NORTHWIND SUPPLY</strong><nav><span>Orders</span><span>Catalog</span><span>Invoices</span><span>Account</span></nav></header>
+        <main>
+          <h1>Orders</h1>
+          <p class="sub">Wholesale orders for your account. Times are in Pacific time.</p>
+          <div class="row">
+            <select aria-label="Month"><option>November 2026</option></select>
+            <select aria-label="Status"><option>All statuses</option></select>
+            <span style="flex:1"></span>
+            <button class="btn primary" type="button">Export CSV</button>
+          </div>
+          <table>
+            <thead><tr><th>Order</th><th>Customer</th><th>Placed</th><th>Promised</th><th>Status</th><th style="text-align:right">Total</th></tr></thead>
+            <tbody>
+              <tr><td><a href="#">#1040</a></td><td>Pine &amp; Pour</td><td>Nov 10</td><td>Nov 15</td><td>Shipped</td><td style="text-align:right">$1,284.00</td></tr>
+              <tr><td><a href="#">#1041</a></td><td>Orchard Bakehouse</td><td>Nov 11</td><td>Nov 16</td><td>Shipped</td><td style="text-align:right">$642.50</td></tr>
+              <tr><td><a href="#">#1042</a></td><td>Harbor Coffee</td><td>Nov 12</td><td>Nov 18</td><td class="late">Packed, not shipped</td><td style="text-align:right">$2,110.00</td></tr>
+              <tr class="target"><td><a href="#">#1043</a></td><td>Lumen Studio</td><td>Nov 14</td><td>Nov 20</td><td class="late">Waiting on stock</td><td style="text-align:right">$418.20</td></tr>
+              <tr><td><a href="#">#1044</a></td><td>Kettle &amp; Crumb</td><td>Nov 15</td><td>Nov 21</td><td>Shipped</td><td style="text-align:right">$903.75</td></tr>
+              <tr><td><a href="#">#1051</a></td><td>Fieldnote Co.</td><td>Nov 17</td><td>Nov 22</td><td class="late">Packed, not shipped</td><td style="text-align:right">$1,560.00</td></tr>
+              <tr><td><a href="#">#1052</a></td><td>Tidewater Goods</td><td>Nov 18</td><td>Nov 24</td><td>Shipped</td><td style="text-align:right">$287.40</td></tr>
+              <tr><td><a href="#">#1053</a></td><td>Copper Hill Market</td><td>Nov 19</td><td>Nov 25</td><td>Shipped</td><td style="text-align:right">$1,032.10</td></tr>
+            </tbody>
+          </table>
+        </main>
+      </div>
+
+      <!-- Per-site approval: the first action on a new site waits here (and in the side panel). -->
+      <div class="ov ask" id="ask" hidden>
+        <svg class="avatar"><use href="#atlas"/></svg>
+        <div class="msg">Atlas wants to use <b>northwind-supply.example</b><small>It can read and act on this site in its own tabs.</small></div>
+        <button type="button">Don’t allow</button>
+        <button type="button">Allow once</button>
+        <button type="button" class="primary">Always allow</button>
+      </div>
+
+      <!-- Download confirmation -->
+      <div class="ov ask" id="download" hidden>
+        <svg class="i" style="width:18px;height:18px;margin-left:2px"><use href="#i-download"/></svg>
+        <div class="msg">Atlas wants to download <b>orders-november.csv</b><small>48 KB from northwind-supply.example to Downloads</small></div>
+        <button type="button">Cancel</button>
+        <button type="button" class="primary">Download</button>
+      </div>
+
+      <!-- Visible control and Stop -->
+      <div class="ov pill" id="pill">
+        <svg class="avatar"><use href="#atlas"/></svg>
+        <span class="dot"></span>
+        <span id="pill-text">Atlas is using this tab</span>
+        <button type="button" id="stop"><svg class="i" style="width:12px;height:12px"><use href="#i-square"/></svg>Stop</button>
+      </div>
+    </div>
+
+    <aside class="panel">
+      <div class="panel-head"><span class="name"><svg class="i" style="width:16px;height:16px"><use href="#mark"/></svg>Overlay</span><svg class="i"><use href="#i-pin"/></svg><svg class="i"><use href="#i-x"/></svg></div>
+      <iframe id="app" title="Overlay side panel"></iframe>
+    </aside>
+  </div>
+</div>
+<div class="note">Mockup. The side panel is the production app (<code>chrome-extension-app.html</code>) at side-panel width. The page, tab strip and toolbar are stand-ins for Chrome; the bar at the top of the page, the download bar and the pill at the bottom are what the extension adds.</div>
+
+<script>
+  const PANELS = {
+    thread: '#/w/northwind/personal/agents?agent=agent_atlas&id=k17convatlaschromeorders00000000',
+    settings: '#/app/settings?section=browser',
+    chats: '#/w/northwind/personal/chats',
+  }
+  const params = new URLSearchParams(location.search)
+  let theme = params.get('theme') === 'dark' ? 'dark' : 'light'
+  let panel = params.get('panel') in PANELS ? params.get('panel') : 'thread'
+  let state = ['working', 'ask', 'download', 'idle'].includes(params.get('state')) ? params.get('state') : 'working'
+  const $ = (id) => document.getElementById(id)
+
+  function render() {
+    document.documentElement.dataset.theme = theme
+    $('theme').setAttribute('aria-pressed', String(theme === 'dark'))
+    document.querySelectorAll('[data-state]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.state === state)))
+    document.querySelectorAll('[data-panel]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.panel === panel)))
+    const active = state !== 'idle'
+    $('viewport').classList.toggle('controlled', active)
+    $('pill').hidden = !active
+    $('ask').hidden = state !== 'ask'
+    $('download').hidden = state !== 'download'
+    $('badge').style.display = active ? '' : 'none'
+    $('group').style.opacity = active ? '1' : '.55'
+    $('pill-text').textContent = state === 'ask' ? 'Atlas is waiting for you' : state === 'download' ? 'Atlas is waiting for you' : 'Atlas is using this tab'
+    const src = 'chrome-extension-app.html' + (theme === 'dark' ? '?theme=dark' : '') + PANELS[panel]
+    if ($('app').getAttribute('src') !== src) $('app').setAttribute('src', src)
+    const query = new URLSearchParams({ ...(theme === 'dark' ? { theme } : {}), ...(panel !== 'thread' ? { panel } : {}), ...(state !== 'working' ? { state } : {}) })
+    history.replaceState(null, '', query.toString() ? '?' + query : location.pathname)
+  }
+  document.querySelectorAll('[data-state]').forEach((b) => b.addEventListener('click', () => { state = b.dataset.state; render() }))
+  document.querySelectorAll('[data-panel]').forEach((b) => b.addEventListener('click', () => { panel = b.dataset.panel; render() }))
+  $('theme').addEventListener('click', () => { theme = theme === 'dark' ? 'light' : 'dark'; render() })
+  $('stop').addEventListener('click', () => { state = 'idle'; render() })
+  document.querySelectorAll('#ask button, #download button').forEach((b) => b.addEventListener('click', () => { state = 'working'; render() }))
+  render()
+</script>
+</body>
+</html>

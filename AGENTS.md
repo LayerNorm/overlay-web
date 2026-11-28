@@ -104,6 +104,7 @@ The `internal/develop/` directory contains living documentation that coding agen
 | `internal/develop/convex-workflow.md` | Any change to Convex deploy commands, environment selection, or boundary rules. |
 | `docs/developer/contribute/architecture.mdx` | Any change to the app's layer structure (`src/features`, `src/server`, `src/shared`, `packages/`), import boundaries, or module conventions. |
 | `internal/develop/surfaces.md` | Any change to which surfaces live in `apps/`, how they share code with web, their install/CI/release paths, the web deploy ignore step, or a feature's availability per surface (the parity table). |
+| `internal/develop/chrome-extension.md` | Any change to `apps/chrome`, the Chrome bridge (`packages/overlay-chrome-bridge`), framing of the web app by the extension, its permissions, or `navigateToExternalFlow` call sites. |
 | `internal/develop/admin-console.md` | Any change to `apps/admin/**` (the standalone operator console), its auth/session model, Convex access path, env contract, or deployment lifecycle. |
 | `internal/develop/feature-modules.md` | Any change to the feature module registry, extension system, or `@overlay/app-core` shell config. |
 | `internal/develop/api-source-of-truth.md` | Any change to where API logic lives (Convex vs BFF vs `@overlay/api-client`), or the contract between layers. |

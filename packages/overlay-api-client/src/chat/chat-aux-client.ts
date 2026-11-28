@@ -12,13 +12,6 @@ export class ChatAuxClient {
     return this.http.request('/api/v1/generate-title', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
-  generateTabGroupLabelResponse(body: Record<string, unknown>, init?: RequestInit) {
-    return this.http.request(
-      '/api/v1/generate-tab-group-label',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
   generateImageResponse(body: Record<string, unknown>, init?: RequestInit) {
     return this.http.request('/api/v1/generate-image', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }

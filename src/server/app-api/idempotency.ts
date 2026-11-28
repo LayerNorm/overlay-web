@@ -18,7 +18,6 @@ const MAX_IDEMPOTENCY_KEY_LENGTH = 255
 const MAX_CACHED_RESPONSE_BYTES = 512 * 1024
 const STREAM_IDEMPOTENCY_PATHS = new Set([
   '/api/v1/conversations/act',
-  '/api/v1/conversations/act/extension-plan',
 ])
 
 const HOP_BY_HOP_HEADERS = new Set([

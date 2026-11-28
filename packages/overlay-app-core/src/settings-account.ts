@@ -132,7 +132,6 @@ export interface TopUpVerifyResponse {
 
 export interface DesktopLinkRequest {
   codeChallenge: string
-  chromeExtensionId?: string
 }
 
 export interface DesktopLinkResponse {

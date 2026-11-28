@@ -237,3 +237,11 @@ test('stored file content owns its security policy so the app policy cannot repl
   const other = await proxy(new NextRequest(origin + '/api/v1/work'))
   assert.notEqual(other.headers.get('content-security-policy') ?? other.headers.get('content-security-policy-report-only'), null)
 })
+
+test('only this site and the Chrome extension side panel may frame the app, even under a report-only policy', async () => {
+  const { CHROME_EXTENSION_ORIGIN } = await import('@overlay/chrome-bridge')
+  const response = await proxy(new NextRequest(origin + '/app'))
+  const enforced = response.headers.get('content-security-policy')
+  assert.equal(enforced, `frame-ancestors 'self' ${CHROME_EXTENSION_ORIGIN}`)
+  assert.match(response.headers.get('content-security-policy-report-only') ?? '', new RegExp(`frame-ancestors 'self' ${CHROME_EXTENSION_ORIGIN};`))
+})

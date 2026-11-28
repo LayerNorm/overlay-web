@@ -110,13 +110,6 @@ export class ConversationsClient {
     return this.http.request('/api/v1/conversations/act', this.http.jsonRequest(body, { ...init, method: 'POST' }))
   }
 
-  extensionPlanResponse(body: ActConversationRequest, init?: MutationRequestInit) {
-    return this.http.request(
-      '/api/v1/conversations/act/extension-plan',
-      this.http.jsonRequest(body, { ...init, method: 'POST' }),
-    )
-  }
-
   deleteMessageResponse(
     body: { conversationId?: string; turnId?: string; accessToken?: string; userId?: string },
     init?: RequestInit,

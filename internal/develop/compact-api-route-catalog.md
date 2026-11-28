@@ -124,7 +124,6 @@ For a description of what each route does and its associated implementation file
 - `DELETE, GET, POST /api/v1/conversations/[conversationId]/participants`
 - `POST /api/v1/conversations/[conversationId]/reports`
 - `PATCH /api/v1/conversations/[conversationId]/state`
-- `POST /api/v1/conversations/act/extension-plan`
 - `POST /api/v1/conversations/act`
 - `GET, POST /api/v1/conversations/channels`
 - `POST /api/v1/conversations/direct-messages`
@@ -153,7 +152,6 @@ For a description of what each route does and its associated implementation file
 - `PATCH /api/v1/files/share`
 - `POST /api/v1/files/upload-url`
 - `POST /api/v1/generate-image`
-- `POST /api/v1/generate-tab-group-label`
 - `POST /api/v1/generate-title`
 - `POST /api/v1/generate-video`
 - `GET /api/v1/outputs/[outputId]/content`

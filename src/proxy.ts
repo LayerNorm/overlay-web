@@ -9,6 +9,7 @@ import {
   parseWorkspaceHandleRoute,
 } from '@/shared/workspaces/routing'
 import { ROUTE_WORKSPACE_SCOPE_HEADER } from '@/shared/workspaces/constants'
+import { CHROME_EXTENSION_FRAME_ANCESTORS } from '@overlay/chrome-bridge'
 
 const SESSION_COOKIE_NAME = 'overlay_session'
 const BETTER_AUTH_SESSION_COOKIE_NAME = 'better-auth.session_token'
@@ -173,6 +174,13 @@ export const INLINE_SCRIPT_HASHES = [
   "'sha256-8VDeVWpS/RIs4mDh7kcOp3E1YoVc88NbwYV/XbJs5mI='",
 ] as const
 
+/**
+ * Only this site and the Overlay Chrome extension's side panel may frame the app. Always enforced: when the full policy
+ * is report-only (development), a separate enforced policy carries just this directive, since the static
+ * `X-Frame-Options: SAMEORIGIN` header would otherwise keep the extension from framing the app.
+ */
+export const FRAME_ANCESTORS = `frame-ancestors 'self' ${CHROME_EXTENSION_FRAME_ANCESTORS.join(' ')}`
+
 export function buildCspPolicy(nonce?: string): string {
   const scriptSrc = uniqueSources([
     "'self'",
@@ -205,7 +213,7 @@ export function buildCspPolicy(nonce?: string): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'self'",
+    FRAME_ANCESTORS,
     `report-uri ${CSP_REPORT_PATH}`,
     'report-to csp-endpoint',
   ]
@@ -224,11 +232,8 @@ function applyBrowserSecurityHeaders(
 ): NextResponse {
   response.headers.set(headerName, cspPolicy)
   response.headers.set('Reporting-Endpoints', `csp-endpoint="${CSP_REPORT_PATH}"`)
-  response.headers.delete(
-    headerName === 'Content-Security-Policy'
-      ? 'Content-Security-Policy-Report-Only'
-      : 'Content-Security-Policy'
-  )
+  if (headerName === 'Content-Security-Policy') response.headers.delete('Content-Security-Policy-Report-Only')
+  else response.headers.set('Content-Security-Policy', FRAME_ANCESTORS)
   return response
 }
 

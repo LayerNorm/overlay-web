@@ -318,10 +318,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
     methods: { POST: resource('conversation', 'edit', { optional: true }, 'conversations.edit', 'models.use') },
   },
   {
-    path: '/api/v1/conversations/act/extension-plan',
-    methods: { POST: capability('conversations.edit', 'models.use') },
-  },
-  {
     path: '/api/v1/conversations/message',
     methods: {
       POST: resource('conversation', 'edit', {}, 'conversations.edit'),
@@ -405,7 +401,6 @@ export const AUTHORIZATION_ROUTE_POLICIES: readonly AuthorizationRoutePolicyRule
   { path: '/api/v1/model-catalog', methods: { GET: capability('models.use') } },
   { path: '/api/v1/generate-title', methods: { POST: capability('models.use') } },
   { path: '/api/v1/link-preview', methods: { GET: capability('conversations.read') } },
-  { path: '/api/v1/generate-tab-group-label', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-image', methods: { POST: capability('models.use') } },
   { path: '/api/v1/generate-video', methods: { POST: capability('models.use') } },
   // BYOK provider connections are scoped to the caller's own user id.

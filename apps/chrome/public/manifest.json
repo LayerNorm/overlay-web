@@ -1,18 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "overlay",
-  "description": "Overlay for Chrome: a side panel shell for chat, browser context, and page-aware assistance.",
-  "version": "0.1.0",
+  "name": "Overlay",
+  "description": "Overlay in Chrome's side panel: your agents, chats and files next to the page you're on.",
+  "version": "0.2.0",
   "minimum_chrome_version": "116",
-  "permissions": ["activeTab", "scripting", "sidePanel", "storage", "tabGroups", "tabs"],
-  "host_permissions": ["http://*/*", "https://*/*"],
-  "externally_connectable": {
-    "matches": [
-      "http://localhost:3000/*",
-      "https://getoverlay.io/*",
-      "https://www.getoverlay.io/*"
-    ]
-  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0TjrhOKax+6n/ZjHpiBWLjRvjEX5y9NJWn1HtU14e76/0ClnC2rODj+IURCav2kt1x+w3OsmNP+gX7xyFQxZONn7fnuATqHZQU+hV9SHUp2OGJnbnJDrOzysaS1+CRHoSOwl4BUVOdrR3zx9+Nxq4XqPhFbUvpJn80kcM9tpviaKiH/JaBRI0bWuMPdoDYdFtZe1nU4b/5+JeI4MwC45OZ4kViIiKhXwT61BLnY97x5hrsgxnkGEI5MWdzSl8cmELMP1jon73Bms4LdTN8H8RdUsKVIc5vQHEHhhK2rogzaYhCmS+1y19XPl/uLQcAFM0NSaPXxGWP7DX2xvmK6eLQIDAQAB",
+  "permissions": ["sidePanel", "scripting"],
+  "host_permissions": ["https://*/*", "http://*/*"],
   "background": {
     "service_worker": "background.js",
     "type": "module"
@@ -24,7 +18,7 @@
     "128": "icons/icon-128.png"
   },
   "action": {
-    "default_title": "Open overlay",
+    "default_title": "Open Overlay",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",
@@ -34,27 +28,5 @@
   },
   "side_panel": {
     "default_path": "sidepanel.html"
-  },
-  "content_scripts": [
-    {
-      "matches": ["http://*/*", "https://*/*"],
-      "js": ["content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": [
-        "http://localhost:3000/*",
-        "https://getoverlay.io/*",
-        "https://www.getoverlay.io/*"
-      ],
-      "js": ["bridge.js"],
-      "run_at": "document_idle"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["assets/*"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }

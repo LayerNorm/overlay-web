@@ -151,6 +151,9 @@
       ],
       "@overlay/desktop-bridge": [
         "./packages/overlay-desktop-bridge/src/index.ts"
+      ],
+      "@overlay/chrome-bridge": [
+        "./packages/overlay-chrome-bridge/src/index.ts"
       ]
     }
   },

@@ -11,6 +11,7 @@ import { SlackMark } from '@/components/brand/AppMarks'
 import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { SettingsAppRow } from './SettingsAppRow'
 import { api } from '../../../../../convex/_generated/api'
+import { navigateToExternalFlow } from '@/components/chrome/chrome-extension'
 
 const RETURN_TO = '/app/settings?section=connected-apps&app=slack'
 
@@ -87,7 +88,7 @@ export function SlackSettings() {
           title="Not connected"
           description={canManage ? 'Add Overlay to your Slack workspace.' : 'Ask a workspace owner or admin to add Overlay to Slack.'}
         >
-          {canManage ? <Button variant="secondary" size="sm" onClick={() => window.location.assign(slackFlowUrl('install', activeWorkspaceId))}>Add to Slack</Button> : null}
+          {canManage ? <Button variant="secondary" size="sm" onClick={() => navigateToExternalFlow(slackFlowUrl('install', activeWorkspaceId))}>Add to Slack</Button> : null}
         </SettingsAppRow>
       </SettingsGroup>
     )
@@ -110,7 +111,7 @@ export function SlackSettings() {
         >
           {link
             ? <Button variant="ghost" size="sm" disabled={busy} onClick={() => void run(() => unlink({ workspaceId: activeWorkspaceId }), 'Couldn’t unlink your account.')}>Unlink</Button>
-            : <Button variant="secondary" size="sm" onClick={() => window.location.assign(slackFlowUrl('link', activeWorkspaceId))}>Link</Button>}
+            : <Button variant="secondary" size="sm" onClick={() => navigateToExternalFlow(slackFlowUrl('link', activeWorkspaceId))}>Link</Button>}
         </SettingsAppRow>
       </SettingsGroup>
       <SettingsGroup>

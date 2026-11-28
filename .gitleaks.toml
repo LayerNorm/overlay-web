@@ -64,3 +64,9 @@ regexes = [
   '''YOUR_[A-Z_]+''',
   '''placeholder''',
 ]
+
+[[allowlists]]
+description = "The Chrome extension manifest `key` is the extension's RSA public key, which pins its id; it is public by design"
+paths = [
+  '''apps/chrome/public/manifest\.json$''',
+]

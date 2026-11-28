@@ -1,4 +1,5 @@
 import { DesktopProvider } from '@/components/desktop/DesktopProvider'
+import { ChromeExtensionSignedOut } from '@/components/chrome/ChromeExtensionSignedOut'
 import { ensureDefaultUserRole } from '@/server/authorization/ensure-default-user-role'
 import { Suspense } from 'react'
 import { OnboardingShell } from './onboarding/OnboardingShell'
@@ -73,7 +74,7 @@ async function AppShellContent({
 
   return (
     <AppClientProviders initialUser={user}>
-      <DesktopProvider><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
+      <DesktopProvider><ChromeExtensionSignedOut /><WorkspaceAppBoundary hasAuthenticatedUser={Boolean(user)}>
         <PersonalChatProvider>
         <GatewayModelCatalogPrefetch />
         <div data-app-shell className="flex h-screen overflow-hidden bg-background text-foreground">

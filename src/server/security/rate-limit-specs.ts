@@ -100,10 +100,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     { bucket: 'memory:write:ip', limit: 60, windowMs: TEN_MINUTES },
     { bucket: 'memory:write:user', limit: 30, windowMs: TEN_MINUTES },
   ],
-  'POST /api/v1/generate-tab-group-label': [
-    { bucket: 'helper:tab-label:ip', limit: 120, windowMs: TEN_MINUTES },
-    { bucket: 'helper:tab-label:user', limit: 60, windowMs: TEN_MINUTES },
-  ],
   'POST /api/v1/transcribe': [
     { bucket: 'transcribe:ip', limit: 30, windowMs: TEN_MINUTES },
     { bucket: 'transcribe:user', limit: 15, windowMs: TEN_MINUTES },
@@ -179,10 +175,6 @@ const ENDPOINT_RATE_LIMITS: Record<string, RateLimitSpec[]> = {
     // Abuse protection only: chat attachments and knowledge uploads both use this route.
     { bucket: 'files/files:ingest-document:ip', limit: 1_000, windowMs: ONE_HOUR },
     { bucket: 'files/files:ingest-document:user', limit: 500, windowMs: ONE_HOUR },
-  ],
-  'POST /api/v1/conversations/act/extension-plan': [
-    { bucket: 'extension-plan:ip', limit: 120, windowMs: TEN_MINUTES },
-    { bucket: 'extension-plan:user', limit: 60, windowMs: TEN_MINUTES },
   ],
   'POST /api/v1/conversations/message': [
     { bucket: 'conversation-message:ip', limit: 240, windowMs: TEN_MINUTES },

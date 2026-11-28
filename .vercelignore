@@ -36,4 +36,3 @@ apps/mobile/*
 !apps/mobile/package.json
 apps/chrome/*
 !apps/chrome/package.json
-!apps/chrome/packages

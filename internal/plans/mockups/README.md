@@ -147,6 +147,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `automation-threads.html#/w/northwind/workspace/automations` (new automation) or
   `automation-threads.html#/w/northwind/workspace/automations?id=k17chatautolaunch000000000000000` (a thread with a
   failed run and one waiting for an answer). Delete it when the design ships or is rejected.
+- `chrome-extension.html` (feature `chrome-extension`, output `chrome-extension-app.html`): the proposed Chrome
+  extension from `internal/plans/CHROME_EXTENSION_PARITY_PLAN.md`. A stand-in Chrome window frames the production app
+  at side-panel width (an agent thread whose `chrome_browser` rows show Atlas working in the person's Chrome, Chats,
+  and the proposed Settings → Browser) beside a sample site with the extension's in-page UI: the per-site approval bar,
+  the download confirmation and the "Atlas is using this tab · Stop" pill. The bar at the top switches page state,
+  side panel view and theme (`?state=ask|download|idle`, `?panel=settings|chats`, `?theme=dark`). Delete both files
+  when the design ships or is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.

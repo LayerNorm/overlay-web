@@ -9,6 +9,7 @@ import { useWorkspace } from '@/contexts/WorkspaceContext'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { SettingsAppRow } from './SettingsAppRow'
 import { api } from '../../../../../convex/_generated/api'
+import { navigateToExternalFlow } from '@/components/chrome/chrome-extension'
 
 const RETURN_TO = '/app/settings?section=connected-apps&app=github'
 
@@ -41,7 +42,7 @@ export function GitHubSettings() {
           variant="secondary"
           size="sm"
           disabled={!activeWorkspaceId}
-          onClick={() => activeWorkspaceId && window.location.assign(overlayAppClient.github.connectUrl(activeWorkspaceId, RETURN_TO))}
+          onClick={() => activeWorkspaceId && navigateToExternalFlow(overlayAppClient.github.connectUrl(activeWorkspaceId, RETURN_TO))}
         >
           Connect GitHub
         </Button>

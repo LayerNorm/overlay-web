@@ -12,7 +12,6 @@ COPY packages ./packages
 # bun.lock covers every workspace; their manifests must be present to install from it.
 COPY apps/admin/package.json ./apps/admin/
 COPY apps/chrome/package.json ./apps/chrome/
-COPY apps/chrome/packages ./apps/chrome/packages
 COPY apps/desktop/package.json ./apps/desktop/
 COPY apps/mobile/package.json ./apps/mobile/
 RUN bun install --frozen-lockfile --production --filter @layernorm/overlay-agent-host \

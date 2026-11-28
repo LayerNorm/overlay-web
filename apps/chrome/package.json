@@ -1,6 +1,6 @@
 {
   "name": "overlay-chrome",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -9,27 +9,14 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "check:no-legacy-app-api": "node ./scripts/ensure-no-legacy-app-api.cjs",
-    "check": "bun run check:no-legacy-app-api && bun run typecheck && bun run test && bun run build"
+    "check": "bun run typecheck && bun run test && bun run build"
   },
   "dependencies": {
-    "@overlay/chat-core": "workspace:*",
-    "@overlay/chat-react": "workspace:*",
-    "@overlay/extension-contracts": "workspace:*",
-    "framer-motion": "^11.18.2",
-    "lucide-react": "^0.575.0",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
+    "@overlay/chrome-bridge": "workspace:*"
   },
   "devDependencies": {
-    "@tailwindcss/postcss": "^4.1.11",
     "@types/chrome": "^0.0.316",
     "@types/node": "^22.15.21",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^5.0.2",
-    "tailwindcss": "^4.1.11",
     "typescript": "^5.8.3",
     "vite": "^7.1.6",
     "vitest": "^4.1.4"
