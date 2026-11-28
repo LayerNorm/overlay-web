@@ -26,7 +26,7 @@
     "@10play/tentap-editor": "^1.0.1",
     "@expo-google-fonts/geist": "^0.4.2",
     "@expo/metro-runtime": "~55.0.10",
-    "@expo/ui": "~55.0.12",
+    "@expo/ui": "~58.0.29",
     "@expo/vector-icons": "^15.0.3",
     "@overlay/api-client": "workspace:*",
     "@overlay/app-core": "workspace:*",
