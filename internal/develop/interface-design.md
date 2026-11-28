@@ -629,6 +629,8 @@ screen again.
 
 Tool, reasoning, worked-for, trace, confirmation and approval rows are logo-free, except for the working orb on a running tool's row. Active assistant responses show the working orb (on the running tool's row, or between tools on one line below the output saying "Thinking" or "Writing the reply"), and it disappears when the response settles. `ChatExchange` suppresses the generic inline Markdown marker, which remains available to other consumers.
 
+A failed response shows `ExchangeErrorDisclosure` (`@overlay/chat-react/transcript`) in both chat exchanges and agent/room replies: one red 13px line, "I ran into an error!", with a ChevronRight that rotates when expanded to reveal the raw error text (including its diagnostic ID) below it. It has no border, fill or icon. Usage-exhausted errors in chat keep `UsageExhaustedNotice`, since that notice carries an action.
+
 `BrandLockup` (`src/components/brand/BrandLockup.tsx`, re-exported from `@overlay/ui`) is the canonical "Overlay" wordmark: the O-with-eyes `OverlayMark` followed by "verlay" in Libre Baskerville Regular. Size it with `font-size`. Shared styles in `packages/overlay-ui/src/styles.css` use a `0.86em` mark, a `0.043em` gap and a `0.045em` baseline translation. The word sits inside the overflow-hidden `.brand-lockup-mask` so the boot entrance can reveal it from behind the mark. Use the shared component for loader, auth, marketing and shell branding rather than composing a separate mark and full word.
 
 App startup renders a single loading screen wherever the shell is still resolving: `AppBootLoader` (`src/components/layout/AppBootLoader.tsx`) behind `InitialAppLoading`/`AppShellLoadingFallback`, the `/` entry fallback, and the workspace-hydration gate (`WorkspaceAppBoundary`, which renders it `settled` so the handoff shows no second splash). It renders `BrandLockup` at `24px`; the mark fades in, the word reveals from behind it, the eyes look around without pulsing the lockup, with the "Opening workspace..." line beneath on the same screen. The reveal plays once per boot; later mounts render the settled screen.
@@ -757,7 +759,9 @@ expands for it (`showComputerExpanded`). Releasing returns the panel to its earl
 covers the conversation.
 
 The working orb's line has no left padding and pulls the orb back by its 5.5px inset, so its first
-dots line up with the agent's name.
+dots line up with the agent's name. Reply text, the "Worked for" row, tool, reasoning and trace rows,
+files, drafts and error notices have no horizontal padding either, so everything in a reply starts on
+the same left edge as the agent's name.
 
 Keep the message action rail visible whenever it offers Stop. An active reply's
 Stop control must not require hovering the message; completed messages retain

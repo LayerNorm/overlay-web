@@ -41,11 +41,11 @@ export function ReasoningBlock({
   )
 
   if (!hasContent) {
-    return <Trace className="px-1 py-1 text-[13px] leading-snug">{line}</Trace>
+    return <Trace className="py-1 text-[13px] leading-snug">{line}</Trace>
   }
 
   return (
-    <Trace className="px-1 py-0.5">
+    <Trace className="py-0.5">
       <TraceCollapsible
         open={streaming || userExpanded}
         onOpenChange={(open) => {

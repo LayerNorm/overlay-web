@@ -3,9 +3,9 @@
 /**
  * Anthropomorphic agent avatars: solid-color creature bodies with straight
  * eyes. Pure SVG, no dependencies. The body shape and color are per-agent
- * identity (`avatarShape` / `avatarColor`); eyes pick dark or light from the
- * body luminance, and very dark/light bodies adapt per theme so they read on
- * any background.
+ * identity (`avatarShape` / `avatarColor`); the eyes are cut out of the body
+ * so the surface behind shows through, and very dark/light bodies adapt per
+ * theme so they read on any background.
  *
  * Motion is a periodic blink (transform only, staggered per instance), or a
  * side-to-side look while the agent is working. Lists should pass `animated={false}`.
@@ -15,8 +15,8 @@ import {
   WORKSPACE_AGENT_CREATURE_SHAPES,
   type WorkspaceAgentCreatureShape,
 } from '@overlay/workspace-contracts'
+import { useId } from 'react'
 import {
-  creatureEyeColor,
   DEFAULT_CREATURE_SHAPE,
   normalizeCreatureShape,
   themeCreatureFills,
@@ -69,9 +69,9 @@ function CreatureBody({ shape }: { shape: CreatureShape }) {
   }
 }
 
-function CreatureEyes({ color }: { color: string }) {
+function CreatureEyes() {
   return (
-    <g className={styles.eyes} fill={color}>
+    <g className={styles.eyes} fill="black">
       <rect x="36" y="45" width="9.5" height="17" rx="4.75" />
       <rect x="54.5" y="45" width="9.5" height="17" rx="4.75" />
     </g>
@@ -88,6 +88,7 @@ export function Creature({
 }: CreatureProps) {
   const resolved = normalizeCreatureShape(shape)
   const fills = themeCreatureFills(color)
+  const eyesMaskId = `creature-eyes-${useId()}`
   return (
     <span
       role="img"
@@ -96,13 +97,17 @@ export function Creature({
       style={{ display: 'inline-flex', width: size, height: size, flexShrink: 0 }}
     >
       <svg width={size} height={size} viewBox="0 0 100 100" aria-hidden="true">
+        <mask id={eyesMaskId} maskUnits="userSpaceOnUse" x="0" y="0" width="100" height="100">
+          <rect width="100" height="100" fill="white" />
+          <CreatureEyes />
+        </mask>
         <g
+          mask={`url(#${eyesMaskId})`}
           className={styles.bodyWrap}
           style={{ '--cwf': fills.light, '--cwf-dark': fills.dark } as React.CSSProperties}
         >
           <CreatureBody shape={resolved} />
         </g>
-        <CreatureEyes color={creatureEyeColor(color)} />
       </svg>
     </span>
   )

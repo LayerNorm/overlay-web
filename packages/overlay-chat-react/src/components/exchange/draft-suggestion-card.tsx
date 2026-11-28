@@ -20,7 +20,7 @@ export function DraftSuggestionCard({
   onSecondary?: () => void
 }) {
   return (
-    <div className="w-full px-1 py-1.5">
+    <div className="w-full py-1.5">
       <div className="max-w-[min(100%,36rem)] rounded-2xl border border-(--border) bg-(--surface-elevated) p-4 shadow-xs">
         <div className="flex items-start justify-between gap-3">
           <div>

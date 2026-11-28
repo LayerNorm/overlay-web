@@ -26,7 +26,7 @@ import type { AssistantVisualBlock } from '@overlay/chat-core'
 import { usePublicTrace } from '../chat/usePublicTrace'
 import { FlashCopyIconButton } from '@overlay/chat-react/draft-review-modal'
 import { UserMessageBubble } from '@overlay/chat-react/user-message-bubble'
-import { AssistantVisualBlocks, ExchangeActions, ExchangeLoadingState, isRecentMessage, responseLoadingPresentation, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
+import { AssistantVisualBlocks, ExchangeActions, ExchangeErrorDisclosure, ExchangeLoadingState, isRecentMessage, responseLoadingPresentation, messageActionVisibilityClass, useMessageEntrance } from '@overlay/chat-react/transcript'
 import type { AttachmentPreview, ChatMessageMention } from '@overlay/chat-react'
 import { Avatar, AvatarFallback, AvatarImage, Button, Textarea } from '@overlay/ui/primitives'
 import { MarkdownMessage } from '@overlay/chat-react'
@@ -760,7 +760,7 @@ function AgentMessageBody({ message, readOnly, onOpenAttachmentPreview }: {
       {message.nativeApproval ? <NativeAgentApprovalCard key={message.nativeApproval.token} approval={message.nativeApproval} /> : null}
       {message.nativeInput ? <NativeAgentInputCard key={message.nativeInput.token} request={message.nativeInput} /> : null}
       {message.folderSaves ? <FolderSavesCard data={message.folderSaves} /> : null}
-      {message.generationError ? <p className="mt-2 text-sm text-destructive" role="alert">{message.generationError}</p> : null}
+      {message.generationError ? <ExchangeErrorDisclosure className="mt-2" errorMessage={message.generationError} /> : null}
     </>
   )
 }

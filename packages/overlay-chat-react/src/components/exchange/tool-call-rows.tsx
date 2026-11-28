@@ -84,7 +84,7 @@ export function GatedPaidFeatureCallout({
   const line =
     typeof out.message === 'string' && out.message.trim() ? out.message.trim() : 'This requires a paid plan.'
   return (
-    <div className="w-full px-1 py-0.5">
+    <div className="w-full py-0.5">
       <div className="flex w-full max-w-full items-center justify-start gap-[0.4em] text-[11px]">
         <TraceMark />
         <p className="w-fit max-w-[min(100%,22rem)] rounded-lg bg-(--surface-subtle) px-2.5 py-1.5 text-[11px] leading-relaxed text-(--muted)">
@@ -103,7 +103,7 @@ export function SingleToolCallRow({
   connectBottom?: boolean
 }) {
   return (
-    <div className="w-full px-1 py-0.5">
+    <div className="w-full py-0.5">
       <ToolCallRowWithReasoning block={block} />
     </div>
   )
@@ -135,7 +135,7 @@ export function ToolCallsCollapsedGroup({
       : n === 0 && anyRunning ? 'Working' : n === 1 ? '1 tool called' : `${n} tools called`
 
   return (
-    <Trace className="px-1 py-0.5">
+    <Trace className="py-0.5">
       <TraceCollapsible open={open} onOpenChange={setOpen}>
         <TraceCollapsibleTrigger className="py-1 text-[13px] leading-5">
           <TraceLine status={anyErr ? 'error' : anyRunning ? 'running' : undefined}>
