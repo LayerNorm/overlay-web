@@ -245,7 +245,7 @@
     "@tiptap/extension-underline": "^3.20.1",
     "@tiptap/extension-youtube": "^3.20.1",
     "@tiptap/pm": "^3.20.1",
-    "@tiptap/react": "^3.20.1",
+    "@tiptap/react": "^3.35.0",
     "@tiptap/starter-kit": "^3.20.1",
     "@tiptap/suggestion": "^3.22.5",
     "@types/dagre": "^0.7.54",
