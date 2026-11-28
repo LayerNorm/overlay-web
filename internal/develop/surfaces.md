@@ -44,6 +44,7 @@ runtime (Node.js for Next.js and scripts, Convex's runtime, Electron, Hermes).
   dependencies it declares, so mobile keeps Expo's pinned React (19.2.0) beside web's.
   Importing a package you have not declared fails; add it to that workspace's
   `package.json` instead of relying on another workspace's copy.
+- The native typechecker (`scripts/ci/typecheck-native.mjs`) is the same Bun, read from `packageManager`.
 - **Supply chain:** `minimumReleaseAge` (7 days) in `bunfig.toml`; install scripts run only
   for `trustedDependencies` in `package.json`; CI installs with `--frozen-lockfile`.
   Overrides are top-level only (Bun has no nested or range-keyed overrides): pin a

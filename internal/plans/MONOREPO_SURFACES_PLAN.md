@@ -111,7 +111,7 @@ behind a GitHub runner backlog when this was written).
   `@ai-sdk/anthropic` 4.0.22 → 4.0.107) and broke the AI SDK override. After migration web
   differs from the old root lockfile only in the intended pins; desktop differs in 16
   transitive packages and mobile in 21, mostly where root security pins now apply to them.
-- Isolated layout exposed undeclared imports (root `tsx`, `storybook`, `sharp`, `esbuild`,
+- Isolated layout exposed undeclared imports (root `tsx`, `sharp`, `esbuild`,
   `e2b`, `@ai-sdk/gateway`, Workflow packages, unified/remark, hast/mdast types; mobile React
   Navigation and Babel; desktop `playwright`) and a real bug: mobile's DOM transcript
   lazy-loaded Shiki 3 hoisted from Mintlify while `@overlay/ui` uses Shiki 4.

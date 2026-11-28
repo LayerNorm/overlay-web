@@ -311,8 +311,8 @@ async function checkPublicationReadiness(failures: string[]) {
   if (!/Node\.js 22 or newer/i.test(quickstart)) {
     failures.push('docs/developer/contribute/run-locally.mdx must require Node.js 22 or newer')
   }
-  if (!/npm 11 or newer/i.test(quickstart)) {
-    failures.push('docs/developer/contribute/run-locally.mdx must require npm 11 or newer')
+  if (!/Bun 1\.4\.5 or newer/i.test(quickstart)) {
+    failures.push('docs/developer/contribute/run-locally.mdx must require Bun 1.4.5 or newer')
   }
 
   const forbiddenCommandFragments = [

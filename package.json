@@ -348,7 +348,6 @@
     "postcss": "8.5.26",
     "react-test-renderer": "19.2.8",
     "remark-parse": "11.0.0",
-    "storybook": "10.6.2",
     "tailwindcss": "^4.3.3",
     "tsx": "4.23.15",
     "typescript": "^5",

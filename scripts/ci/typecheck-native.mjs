@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const BUN_TYPECHECK_VERSION = '1.4.4';
+// The repository's own Bun (packageManager in package.json) is also the native typechecker.
+export const BUN_TYPECHECK_VERSION = JSON.parse(
+  readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
+).packageManager.replace(/^bun@/, '');
 // TS7 deliberately stopped automatically including every installed @types package.
 // Preserve the existing TS5 project's ambient scope instead of silently losing it.
 export function legacyAmbientConfig(root) {
