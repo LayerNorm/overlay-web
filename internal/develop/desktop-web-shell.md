@@ -164,7 +164,10 @@ fast initial render cannot leave the launched app hidden.
 The chat/files/knowledge CI boundaries retain canonical web renderer checks and
 share a native-shell guard (`scripts/ci/desktop-web-shell-boundary.mjs`): duplicate
 desktop renderers/provider clients remain retired, the desktop must link the shared
-bridge package rather than keep a copy, and its Agent Host pin must match web enrollment.
+bridge package rather than keep a copy, and its Agent Host pin must match web enrollment or trail it by one release. The
+host is published from main only after the release that bumps it merges, and desktop CI installs the pin from npm, so a
+host release goes: merge the bump (web enrollment moves), run `publish-agent-host.yml`, then move the desktop pin and
+`agent-host-bundle/package-lock.json` in the next change.
 
 Run bridge package tests, web type/lint checks and desktop `bun run test`, `bun run
 build`, `bun run check:no-provider-sdks`, and `bun run test:e2e`. Electron Playwright
