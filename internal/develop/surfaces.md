@@ -106,6 +106,11 @@ releases install without a restored cache.
 
 ## Feature parity
 
+Mobile is a companion for workspaces that already exist (owner decision, 2026-11-27). It
+does not create workspaces, run the setup conversation or offer paid features: no plan
+picker, prices or checkout. A paid workspace keeps its entitlements on mobile, and people
+set up and pay on web or desktop. Accepting an invitation to an existing workspace is fine.
+
 Update this table when a feature lands on, or is removed from, any surface. "Web" means
 the desktop app too: it renders the web app, adding only the native rows marked below.
 
@@ -123,3 +128,4 @@ the desktop app too: it renders the web app, adding only the native rows marked 
 | Push notifications while closed (mentions, DMs, approvals) | No | Yes (`mobile-push.md`) | No |
 | Browser tab context and actions | No | No | Yes |
 | This Mac (local computer), private threads, first-run setup | Desktop only | No | No |
+| Create a workspace, first-run setup conversation, plans and checkout | Yes | No (companion) | No |

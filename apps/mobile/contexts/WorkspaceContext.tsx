@@ -19,7 +19,6 @@ import {
   isPersonalWorkspace,
   loadPersistedWorkspaceId,
 } from '../services/workspaceService'
-import { createWorkspace as createWorkspaceOnServer } from '../services/workspaceManagementService'
 
 type WorkspaceContextValue = {
   workspaces: WorkspaceSummary[]
@@ -33,7 +32,6 @@ type WorkspaceContextValue = {
   error: string | null
   switchWorkspace: (workspaceId: string) => Promise<void>
   /** Creates an organization workspace and makes it active (matches web create). */
-  createWorkspace: (name: string) => Promise<WorkspaceSummary>
   refresh: () => Promise<void>
 }
 
@@ -185,24 +183,6 @@ export function WorkspaceProvider({
     [activeWorkspaceId, applyActiveWorkspace, refreshSession],
   )
 
-  const createWorkspace = useCallback(
-    async (name: string): Promise<WorkspaceSummary> => {
-      setIsSwitching(true)
-      setError(null)
-      try {
-        const workspace = await createWorkspaceOnServer(name)
-        // Refresh the list so role/memberCount resolve, then activate + pull
-        // workspace-scoped session entitlements like a manual switch does.
-        await refresh()
-        await switchWorkspace(workspace.id)
-        return workspace
-      } finally {
-        setIsSwitching(false)
-      }
-    },
-    [refresh, switchWorkspace],
-  )
-
   const value = useMemo<WorkspaceContextValue>(
     () => ({
       workspaces,
@@ -213,7 +193,6 @@ export function WorkspaceProvider({
       isSwitching,
       error: error ?? bootstrapError,
       switchWorkspace,
-      createWorkspace,
       refresh,
     }),
     [
@@ -225,7 +204,6 @@ export function WorkspaceProvider({
       error,
       bootstrapError,
       switchWorkspace,
-      createWorkspace,
       refresh,
     ],
   )
