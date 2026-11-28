@@ -1,4 +1,4 @@
-import type { PrivateModelProvider } from './private-threads-protocol.js'
+import type { PrivateModelProvider, PrivatePlanProvider } from './private-threads-protocol.js'
 
 export type PrivateModelInfo = { id: string; name: string }
 
@@ -43,6 +43,30 @@ export async function listProviderModels(
       return rows(body.data).map(row => ({ id: String(row.id), name: String(row.name ?? row.id) }))
     }
   }
+}
+
+/**
+ * The chat models a signed-in plan offers, from Overlay Desktop's local CLIProxyAPI. The proxy lists every signed-in
+ * plan together; each plan's models are told apart by name.
+ */
+export async function listPlanModels(
+  plan: PrivatePlanProvider,
+  proxy: { url: string; key: string },
+  fetchImpl: typeof fetch = fetch,
+): Promise<PrivateModelInfo[]> {
+  const response = await fetchImpl(`${proxy.url}/v1/models`, {
+    headers: { authorization: `Bearer ${proxy.key}` },
+    signal: AbortSignal.timeout(15_000),
+  })
+  if (!response.ok) throw new Error(`The plan proxy answered ${response.status}.`)
+  const body = await response.json() as Record<string, unknown>
+  const wanted = plan === 'claude'
+    ? (id: string) => /^claude-/.test(id)
+    : (id: string) => /^(gpt-|o\d|codex-)/.test(id) && !/(image|audio|realtime|transcribe|tts|embedding)/.test(id)
+  return rows(body.data)
+    .map(row => ({ id: String(row.id), name: String(row.display_name ?? row.id) }))
+    .filter(model => wanted(model.id))
+    .sort((a, b) => b.id.localeCompare(a.id))
 }
 
 function rows(value: unknown): Record<string, unknown>[] {

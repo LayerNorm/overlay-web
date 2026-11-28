@@ -42,6 +42,10 @@ const bundledNode = JSON.parse(fs.readFileSync(path.join(root, 'native-artifacts
   (artifact) => artifact.path === 'agent-host-bundle/runtime/node'
 )
 const nodeVersion = /\/v(\d+\.\d+\.\d+)\//.exec(bundledNode.source)[1]
+const bundledCliProxy = JSON.parse(fs.readFileSync(path.join(root, 'native-artifacts.json'), 'utf8')).artifacts.find(
+  (artifact) => artifact.path === 'agent-host-bundle/runtime/cli-proxy-api'
+)
+const cliProxyVersion = /\/v(\d+\.\d+\.\d+)\//.exec(bundledCliProxy.source)[1]
 const integrityHash = (integrity) =>
   typeof integrity === 'string' && integrity.startsWith('sha512-')
     ? [{ alg: 'SHA-512', content: Buffer.from(integrity.slice('sha512-'.length), 'base64').toString('hex') }]
@@ -98,6 +102,16 @@ const components = [...workspaceComponents, ...bundleComponents]
     purl: `pkg:generic/node@${nodeVersion}?arch=arm64&os=darwin`,
     externalReferences: [{ type: 'distribution', url: bundledNode.source }],
     hashes: [{ alg: 'SHA-256', content: bundledNode.sha256 }]
+  })
+  .concat({
+    type: 'application',
+    'bom-ref': 'agent-host-bundle/runtime/cli-proxy-api',
+    name: 'CLIProxyAPI',
+    version: cliProxyVersion,
+    purl: `pkg:github/router-for-me/CLIProxyAPI@v${cliProxyVersion}`,
+    licenses: [{ license: { id: bundledCliProxy.sourceLicense } }],
+    externalReferences: [{ type: 'distribution', url: bundledCliProxy.source }],
+    hashes: [{ alg: 'SHA-256', content: bundledCliProxy.sha256 }]
   })
   .sort((left, right) => left['bom-ref'].localeCompare(right['bom-ref']))
 

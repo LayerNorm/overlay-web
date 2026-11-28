@@ -128,4 +128,5 @@ the desktop app too: it renders the web app, adding only the native rows marked 
 | Push notifications while closed (mentions, DMs, approvals) | No | Yes (`mobile-push.md`) | No |
 | Browser tab context and actions | No | No | Yes |
 | This Mac (local computer), private threads, first-run setup | Desktop only | No | No |
+| Local (command) MCP servers in private threads, Settings → Import | Desktop only | No | No |
 | Create a workspace, first-run setup conversation, plans and checkout | Yes | No (companion) | No |

@@ -19,6 +19,8 @@ import {
 } from "./DesktopSettingsParts";
 import { DesktopLocalComputerSettings } from "./DesktopLocalComputerSettings";
 import { DesktopModelKeysSettings } from "./DesktopModelKeysSettings";
+import { DesktopLocalMcpSettings } from "./DesktopLocalMcpSettings";
+import { DesktopPlansSettings } from "./DesktopPlansSettings";
 import { useDesktopBridge } from "@/components/desktop/DesktopProvider";
 import type {
   DesktopBridge,
@@ -178,7 +180,9 @@ export function DesktopSettings() {
       {can("localComputer") && can("agentHost") ? (
         <DesktopLocalComputerSettings bridge={bridge} />
       ) : null}
+      {can("localThreads") ? <DesktopPlansSettings /> : null}
       {can("localThreads") ? <DesktopModelKeysSettings /> : null}
+      {can("localMcp") ? <DesktopLocalMcpSettings bridge={bridge} /> : null}
       <DesktopSection title="About">
         <SettingsGroup>
           <DesktopRow

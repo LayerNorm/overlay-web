@@ -394,7 +394,8 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
         (capability !== 'diagnostics' || Boolean(process.env.SENTRY_DSN)) &&
         (capability !== 'localComputer' || process.platform === 'darwin') &&
         (capability !== 'localThreads' || (process.platform === 'darwin' && privateThreadsService.isSupported())) &&
-        (capability !== 'localSetup' || process.platform === 'darwin')
+        (capability !== 'localSetup' || process.platform === 'darwin') &&
+        (capability !== 'localMcp' || (process.platform === 'darwin' && privateThreadsService.supportsLocalMcp()))
     )
   }),
   'window.openDataFolder': async () => {
@@ -587,9 +588,21 @@ const handlers: { [M in Method]: (input: Input<M>) => Promise<Results[M]> | Resu
   'localThreads.keys': async () => { await authenticated(); return privateThreadsService.keys() },
   'localThreads.setKey': async (input) => { await authenticated(); return privateThreadsService.setKey(input) },
   'localThreads.models': async (input) => { await authenticated(); return privateThreadsService.models(input) },
-  'localSetup.scan': async () => { await authenticated(); return localSetupService.scan() },
+  'localThreads.plans': async () => { await authenticated(); return privateThreadsService.plans() },
+  'localThreads.signIn': async (input) => { await authenticated(); return privateThreadsService.signIn(input) },
+  'localThreads.cancelSignIn': () => privateThreadsService.cancelSignIn(),
+  'localThreads.signOut': async (input) => { await authenticated(); return privateThreadsService.signOut(input) },
+  'localSetup.scan': async (input) => { await authenticated(); return localSetupService.scan(input) },
   'localSetup.import': async (input) => { await authenticated(); return localSetupService.import(input) },
   'localSetup.useShellKey': async (input) => { await authenticated(); return localSetupService.useShellKey(input) },
+  'localMcp.list': async () => { await authenticated(); return privateThreadsService.mcpList() },
+  'localMcp.add': async (input) => {
+    await authenticated()
+    await privateThreadsService.mcpSave({ ...input, importedFrom: null })
+    return privateThreadsService.mcpList()
+  },
+  'localMcp.remove': async (input) => { await authenticated(); return privateThreadsService.mcpRemove(input) },
+  'localMcp.check': async (input) => { await authenticated(); return privateThreadsService.mcpCheck(input) },
   'agentHost.stop': () => embeddedHostService.stop(),
   'agentHost.logs': () => embeddedHostService.getStatus().logTail,
   'diagnostics.status': () => ({ enabled: settingsService.analyticsConsentEnabled }),

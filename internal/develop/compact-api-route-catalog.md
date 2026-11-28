@@ -17,6 +17,7 @@ For a description of what each route does and its associated implementation file
 - `POST /api/auth/preview-login`
 - `POST /api/account/delete`
 - `GET, POST /api/agent-gateway/[provider]/[...path]`
+- `POST /api/private-threads/model`
 - `GET /api/auth/callback`
 - `GET /api/auth/convex-policy`
 - `GET /api/auth/convex-token`
@@ -176,6 +177,7 @@ For a description of what each route does and its associated implementation file
 - `GET /api/v1/mcp/client`
 - `DELETE, GET, POST /api/v1/mcp/connections`
 - `POST /api/v1/mcp/private-thread`
+- `POST /api/v1/private-threads/model-access`
 - `GET, POST /api/v1/mcps/oauth/callback`
 - `DELETE, POST /api/v1/mcps/oauth`
 - `DELETE, GET, PATCH, POST /api/v1/mcps`

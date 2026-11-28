@@ -35,7 +35,7 @@ export function DesktopModelKeysSettings() {
   return (
     <DesktopSection
       title="Model keys"
-      description="Threads that aren’t synced run on this computer with your own keys. Keys stay in this computer’s keychain and are sent only to their provider."
+      description="Threads that aren’t synced can also run with your own keys, which stay in this computer’s keychain and go only to their provider. In a paid workspace, a thread with no plan or key for its model uses Overlay’s models, charged to the workspace."
     >
       <SettingsGroup>
         {PRIVATE_MODEL_PROVIDERS.map((provider) => (

@@ -1,7 +1,11 @@
 # Desktop onboarding: setting Overlay up on this computer
 
 Status: Phases 1–3 merged (PR 638) and live on overlay.works since 2026-11-27 (`434a46f`); the desktop side shipped in
-Overlay Desktop 0.6.0. Settings → Import and Phase 4 are not built. Not yet accepted in the released app by a real new account. Mockup: `internal/plans/mockups/desktop-onboarding.html`.
+Overlay Desktop 0.6.0. Phase 4 and Settings → Import are built in two draft PRs (2026-11-27): local MCP servers and
+Settings → Import (`codex/desktop-local-mcp-import`), and Claude and ChatGPT plans with Overlay's models
+(`codex/private-threads-subscriptions`, which includes the first). Not merged; they reach the app only after an Agent Host
+release, a desktop pin bump and a signed desktop release. Not yet accepted in the released app by a real new account.
+Mockup: `internal/plans/mockups/desktop-onboarding.html`.
 
 Related: `internal/plans/LOCAL_PRIVATE_THREADS_PLAN.md` (private threads, model keys, free tier),
 `internal/develop/private-threads.md`, `internal/develop/local-computer.md`,
@@ -63,8 +67,10 @@ same screen (the onboarding session only exists once the conversation starts).
      checked with the provider, then kept in the system keychain, the same way as in Settings →
      Model keys.
    - Otherwise the person can add a key, or use Overlay's models with a plan.
-   - *Signed in to Claude Code* and *Signed in to Codex* appear marked "Coming soon". They are
-     Phase 4 of the private threads plan.
+   - *Use a plan you already pay for*: Claude and ChatGPT, each with *Sign in* (the provider's page opens in the
+     browser; the sign-in stays in the keychain). A plan Claude Code or Codex already uses on this computer is pointed
+     out. Shown when this copy of Overlay can run plans (private threads plan, Phase 4; terms review waived by the
+     owner on 2026-11-27).
 5. **This computer.**
    - Connect it (the existing enrollment; the free tier allows one computer).
    - Choose folders: `~/Overlay Files` is always included, and more can be added with the system
@@ -96,7 +102,7 @@ own session. Contents never pass through the page.
 | Skills | `~/.claude/skills/*/SKILL.md`, `~/.codex/skills/*/SKILL.md` | Personal skills (name and description from the front matter) |
 | Subagents | `~/.claude/agents/*.md` | Creator-only agents with creature avatars; the model maps to the closest Overlay model, and tools start from the default groups |
 | Remote MCP servers | `mcpServers` with a `url` in `~/.claude.json`, Claude Desktop's `claude_desktop_config.json`, `~/.cursor/mcp.json`, `~/.gemini/settings.json`; `[mcp_servers]` in `~/.codex/config.toml` | Personal MCP servers. A header token is copied only if ticked; OAuth servers ask the person to sign in again |
-| Local MCP servers | the same files, entries with a `command` | Listed as *Runs on this computer*, coming with phase 4 (Overlay's MCP servers are remote only) |
+| Local MCP servers | the same files, entries with a `command` | MCP servers on this computer, for private threads (command, arguments and folder in the app's data folder, environment values in the keychain); never sent to the workspace. Apps whose bundled host can't run them still show *Coming later* |
 | Model access | Claude Code and Codex sign-ins, shell environment keys | Step 4 |
 
 Not imported: session history, project-level settings inside repositories, and any secret the
@@ -133,8 +139,8 @@ person did not tick. Settings → Import (desktop only) runs the same scan again
 | 0: Mockup and decisions | This plan and `mockups/desktop-onboarding.html` | Done: mockup approved 2026-11-26 |
 | 1: Gate and core screens | `desktopSetup` status, screens 1, 2 and 6, handoff to the conversation at `daily` | Released (web 2026-11-27, Desktop 0.6.0); not accepted |
 | 2: This computer and models | Screens 4 and 5 with existing enrollment and key storage; environment keys | Released (Desktop 0.6.0); not accepted |
-| 3: Bring your setup | Scanners, `localSetup` bridge, import of instructions, skills, subagents and remote MCP servers; Settings → Import | Released (Desktop 0.6.0) except Settings → Import, which is not built; not accepted |
-| 4: Local servers and subscriptions | Local (command) MCP servers in private threads through the Agent Host; Claude and ChatGPT plans (private threads Phase 4) | Not started |
+| 3: Bring your setup | Scanners, `localSetup` bridge, import of instructions, skills, subagents and remote MCP servers; Settings → Import | Released (Desktop 0.6.0) except Settings → Import, which is built in a draft PR (`codex/desktop-local-mcp-import`) with a per-workspace import record so importing again adds nothing twice; not merged, not accepted |
+| 4: Local servers and subscriptions | Local (command) MCP servers in private threads through the Agent Host; Claude and ChatGPT plans (private threads Phase 4) | Local MCP servers built in the same draft PR: the `localMcp` bridge capability, Settings → Desktop → MCP servers on this computer, import from setup and Settings → Import, and the host's stdio pool (unit-tested with a fixture server). Not merged; needs an Agent Host release and desktop pin bump to reach the app; not tested in a running desktop app. Plans (Claude and ChatGPT sign-in in step 4): built in `codex/private-threads-subscriptions`, not merged, released or accepted |
 
 ## Acceptance
 

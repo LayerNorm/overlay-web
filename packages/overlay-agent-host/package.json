@@ -1,6 +1,6 @@
 {
   "name": "@layernorm/overlay-agent-host",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Outbound-only host that lets Overlay's own agents use this machine's tools, and runs private threads for Overlay Desktop.",
   "license": "AGPL-3.0-only",
   "repository": {
@@ -50,7 +50,8 @@
     "@ai-sdk/google": "^4.0.33",
     "@ai-sdk/mcp": "2.0.45",
     "@ai-sdk/openai": "^4.0.21",
-    "@layernorm/overlay-agent-bridge-protocol": "0.7.0",
+    "@layernorm/overlay-agent-bridge-protocol": "0.8.0",
+    "@modelcontextprotocol/sdk": "1.32.1",
     "@openrouter/ai-sdk-provider": "^3.0.0",
     "ai": "7.0.93",
     "tsx": "^4.8.1",

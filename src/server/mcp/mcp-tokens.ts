@@ -13,7 +13,7 @@ import { createHash, createHmac, timingSafeEqual } from 'node:crypto'
  * access token, or a code as either.
  */
 
-export type McpSealedKind = 'client' | 'code' | 'access' | 'refresh' | 'personal' | 'private_thread'
+export type McpSealedKind = 'client' | 'code' | 'access' | 'refresh' | 'personal' | 'private_thread' | 'private_model'
 
 const PREFIX: Record<McpSealedKind, string> = {
   client: 'ovclient_',
@@ -22,6 +22,8 @@ const PREFIX: Record<McpSealedKind, string> = {
   refresh: 'ovmcu_r_',
   personal: 'ovmcu_p_',
   private_thread: 'ovmcu_t_',
+  // Overlay-billed model calls from a private thread (src/server/private-threads/model-relay.ts); never valid at /api/mcp.
+  private_model: 'ovmcu_m_',
 }
 
 export const MCP_ACCESS_TOKEN_TTL_MS = 60 * 60_000
@@ -29,6 +31,8 @@ export const MCP_REFRESH_TOKEN_TTL_MS = 30 * 24 * 60 * 60_000
 export const MCP_CODE_TTL_MS = 60_000
 /** A private thread's token: the desktop asks for a new one each turn, so an hour covers a long turn. */
 export const MCP_PRIVATE_THREAD_TOKEN_TTL_MS = 60 * 60_000
+/** Same lifetime for a private thread's Overlay-billed model calls: one turn, asked for again on the next. */
+export const PRIVATE_MODEL_TOKEN_TTL_MS = 60 * 60_000
 
 function signingSecret(): string | null {
   return process.env.OVERLAY_MCP_OAUTH_SECRET?.trim()

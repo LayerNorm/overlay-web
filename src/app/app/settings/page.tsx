@@ -4,6 +4,8 @@
 // with reusable panel rendering primitives in @overlay/modules-react.
 import { getDesktopBridge } from '@overlay/desktop-bridge'
 import { DesktopSettings } from '@/features/settings/components/DesktopSettings'
+import { DesktopImportSettings } from '@/features/settings/components/DesktopImportSettings'
+import { desktopSettingsSections } from '@/components/desktop/desktop-settings-sections'
 import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
 import { Suspense, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { redirect, useRouter, useSearchParams } from 'next/navigation'
@@ -323,6 +325,7 @@ function SettingsSectionContent({
   }
   if (section === 'providers') return <ProviderConnectionsSetting />
   if (section === 'desktop') return <DesktopSettings />
+  if (section === 'import') return <DesktopImportSettings />
   if (section === 'webhooks') return <WebhookSettings />
   if (section === 'agent-accounts') return <AgentsSettingsSection settings={settings} busy={busy} updateSettings={updateSettings} />
   if (section === 'connected-apps') return <ConnectedAppsHub />
@@ -355,7 +358,7 @@ function SettingsPage() {
     [capabilities],
   )
   const desktop = useDesktopBridge()
-  const sections = useMemo(() => desktop ? [...appShell.settingsSections, { id: 'desktop', label: 'Desktop', icon: 'laptop' }] : appShell.settingsSections, [appShell.settingsSections, desktop])
+  const sections = useMemo(() => [...appShell.settingsSections, ...desktopSettingsSections(desktop?.info.capabilities)], [appShell.settingsSections, desktop])
   const settingsPanels = appShell.settingsPanels
   const defaultSectionId = sections[0]?.id ?? 'general'
   const sectionIds = useMemo(() => new Set<string>(sections.map((s) => s.id)), [sections])
@@ -391,7 +394,7 @@ function SettingsPage() {
   )
 
   useEffect(() => {
-    if (rawSection === 'desktop' && !desktop && getDesktopBridge()) return
+    if ((rawSection === 'desktop' || rawSection === 'import') && !desktop && getDesktopBridge()) return
     if (!sectionIds.has(rawSection)) {
       window.history.replaceState(null, '', `/app/settings?section=${section}`)
     }

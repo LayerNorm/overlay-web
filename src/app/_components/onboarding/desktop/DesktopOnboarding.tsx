@@ -4,17 +4,17 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { ArrowLeft, Building2, Check, CircleCheck, Folder, FolderPlus, KeyRound, Laptop, Loader2, Lock, Monitor, MousePointerClick, User } from 'lucide-react'
 import { Button, Checkbox, Input, Switch } from '@overlay/ui/primitives'
 import { ProviderLogo } from '@overlay/ui/ai'
-import type { LocalModelProvider, LocalSetupImportResult, LocalSetupScan } from '@overlay/desktop-bridge'
+import type { LocalModelProvider, LocalSetupScan } from '@overlay/desktop-bridge'
 import { OverlayMark } from '@/components/brand/OverlayMark'
 import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
-import { useLocalModelKeys } from '@/components/desktop/useLocalThreads'
+import { LocalSetupList, useLocalSetupImport } from '@/components/desktop/LocalSetupList'
+import { useLocalModelKeys, useLocalPlans } from '@/components/desktop/useLocalThreads'
 import { useThisComputer } from '@/components/desktop/useThisComputer'
 import { folderName } from '@/components/desktop/this-computer'
 import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { workspaceClient } from '@/features/workspaces/lib/workspace-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
-import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
-import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
+import { PRIVATE_PLAN_NAMES, PRIVATE_PLAN_PROVIDERS, type PrivatePlanProvider } from '@/shared/agents/private-threads'
 import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 import type { OnboardingPrefill, OnboardingSessionResponse } from '@/shared/onboarding/session'
 import { requestOnboarding } from '../onboarding-client'
@@ -23,7 +23,7 @@ import { DESKTOP_ROLES, desktopSetupSteps, readDesktopSetup, writeDesktopSetup, 
 
 /**
  * A new account's first setup on Overlay Desktop (internal/plans/DESKTOP_ONBOARDING_PLAN.md): who the workspace is
- * for, about you, what other AI tools on this computer bring, model keys, this computer and a plan. It then starts
+ * for, about you, what other AI tools on this computer bring, plans and model keys, this computer and a plan. It then starts
  * the Overlay conversation with those answers, which carries on with agents, apps, teammates and a first task.
  */
 export function DesktopOnboarding({ userId, userName, personalWorkspaceId, onStarted }: {
@@ -199,56 +199,9 @@ function AboutStep({ state, update, onBack, onNext }: { state: DesktopSetupState
   </>
 }
 
-const APP_LOGOS: Record<string, string> = {
-  claude_code: '/assets/svg/landing/claude.svg', claude_desktop: '/assets/svg/landing/claude.svg',
-  codex: '/assets/svg/landing/openai.svg', cursor: '/assets/svg/landing/cursor.svg',
-}
-const KIND_TARGET = { instructions: 'Memories', skill: 'Skills', agent: 'Agents', mcp_remote: 'MCP server', mcp_local: 'Coming later' } as const
-
-function AppLogo({ id }: { id: string }) {
-  if (id === 'gemini_cli') return <ProviderLogo provider="google" size={18} />
-  // Monochrome marks follow the theme.
-  // eslint-disable-next-line @next/next/no-img-element
-  return <img src={APP_LOGOS[id]} alt="" className={`size-[18px] ${id === 'codex' || id === 'cursor' ? 'dark:invert' : ''}`} />
-}
-
 function SetupStep({ workspaceId, onBack, onNext }: { workspaceId: string; onBack(): void; onNext(): void }) {
-  const desktop = useDesktopBridge()
-  const bridge = desktop?.info.capabilities.includes('localSetup') ? desktop.bridge : null
-  const [scan, setScan] = useState<LocalSetupScan | null>(null)
-  const [picked, setPicked] = useState<Set<string>>(new Set())
-  const [open, setOpen] = useState<string | null>(null)
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [result, setResult] = useState<LocalSetupImportResult | null>(null)
-  useEffect(() => {
-    if (!bridge) return
-    let live = true
-    void bridge.call('localSetup.scan', undefined).then((value) => {
-      if (!live) return
-      setScan(value)
-      setOpen(value.apps[0]?.id ?? null)
-      // Everything that can come over starts ticked, except servers that send a token: those are a choice.
-      setPicked(new Set(value.apps.flatMap((app) => app.items.filter((item) => item.importable && !item.detail.includes('header token')).map((item) => item.id))))
-    }).catch(() => { if (live) setScan({ apps: [], shellKeys: [], subscriptions: { claude: false, chatgpt: false } }) })
-    return () => { live = false }
-  }, [bridge])
-  const toggle = (id: string, on: boolean) => setPicked((current) => { const next = new Set(current); if (on) next.add(id); else next.delete(id); return next })
-  const importPicked = async () => {
-    if (!bridge || !picked.size) { onNext(); return }
-    setBusy(true); setError(null)
-    try {
-      const done = await bridge.call('localSetup.import', {
-        workspaceId, itemIds: [...picked],
-        agentDefaults: { modelId: DEFAULT_MODEL_ID, allowedToolIds: toolIdsForEnabledGroups(new Set(AGENT_TOOL_PRESETS.everything.filter((group) => group !== 'computer'))) },
-      })
-      if (!done.failed.length) { onNext(); return }
-      setResult(done)
-      setPicked(new Set(done.failed.map((item) => item.id)))
-    } catch (failure) {
-      setError(errorText(failure, 'Could not import. Try again, or skip for now.'))
-    } finally { setBusy(false) }
-  }
+  const { available, scan, picked, toggle, busy, error, result, importPicked } = useLocalSetupImport(workspaceId)
+  const next = async () => { if (!available || !picked.size || await importPicked()) onNext() }
   if (!scan) return <>
     <Heading title="Bring your setup" detail="Looking for Claude Code, Codex, Claude Desktop, Cursor and Gemini CLI on this computer" />
     <div className="mt-7 flex flex-col items-center gap-2.5 py-10 text-[13px] text-(--muted)"><Loader2 size={18} className="animate-spin" />Checking known settings files…</div>
@@ -256,43 +209,19 @@ function SetupStep({ workspaceId, onBack, onNext }: { workspaceId: string; onBac
   </>
   if (!scan.apps.length) return <>
     <Heading title="Bring your setup" detail="Overlay didn’t find Claude Code, Codex, Claude Desktop, Cursor or Gemini CLI settings on this computer." />
-    <p className="mt-4 text-[13px] text-(--muted)">You can import them later from Settings once you set one up.</p>
+    <p className="mt-4 text-[13px] text-(--muted)">You can import them later from Settings → Import once you set one up.</p>
     <Actions onBack={onBack} next={onNext} />
   </>
   return <>
     <Heading title="Bring your setup" detail="We found AI tools on this computer. Choose what Overlay should bring in." />
-    <List className="mt-5">
-      {scan.apps.map((app) => {
-        const count = app.items.filter((item) => picked.has(item.id)).length
-        const expanded = open === app.id
-        return <div key={app.id}>
-          <Button variant="ghost" aria-expanded={expanded} onClick={() => setOpen(expanded ? null : app.id)}
-            className="h-auto w-full justify-start gap-3 rounded-none px-3.5 py-3 text-left font-normal text-foreground hover:bg-(--surface-subtle)">
-            <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-(--surface-subtle)"><AppLogo id={app.id} /></span>
-            <span className="min-w-0 flex-1"><span className="block text-sm font-medium">{app.name}</span><span className="block truncate font-mono text-xs text-(--muted)">{app.location}</span></span>
-            <span className="text-xs text-(--muted)">{count ? `${count} of ${app.items.length}` : `${app.items.length} found`}</span>
-          </Button>
-          {expanded ? <div className="pb-2.5 pl-[58px] pr-3.5">
-            {app.items.map((item) => (
-              <label key={item.id} className={`flex items-center gap-2.5 py-1.5 text-[13px] ${item.importable ? 'cursor-pointer' : ''}`}>
-                <Checkbox checked={picked.has(item.id)} disabled={!item.importable || busy} onCheckedChange={(value) => toggle(item.id, value === true)} aria-label={`Import ${item.name}`} />
-                <span className={`min-w-0 flex-1 ${item.importable ? '' : 'text-(--muted)'}`}>{item.name}<span className="block truncate text-xs text-(--muted)">{item.detail}</span></span>
-                {item.importable
-                  ? <span className="whitespace-nowrap text-xs text-(--muted)">{KIND_TARGET[item.kind]}</span>
-                  : <span className="whitespace-nowrap rounded-full border border-(--border) px-2 py-0.5 text-[11px] text-(--muted)">Coming later</span>}
-              </label>
-            ))}
-          </div> : null}
-        </div>
-      })}
-    </List>
+    <LocalSetupList className="mt-5" scan={scan} picked={picked} busy={busy} onToggle={toggle} />
     <p className="mt-3.5 flex gap-2 text-xs leading-[18px] text-(--muted)"><Lock size={14} className="mt-px shrink-0" />
-      Overlay read these settings on this computer and changed nothing. Only what you tick goes to your workspace; tokens you leave unticked stay here.</p>
-    {result ? <p role="alert" className="mt-3 text-xs text-red-500">
+      Overlay read these settings on this computer and changed nothing. Only what you tick goes to your workspace; servers that run on this computer and tokens you leave unticked stay here.</p>
+    {result?.failed.length ? <p role="alert" className="mt-3 text-xs text-red-500">
       Imported {result.imported.length}. {result.failed.map((item) => `${item.name}: ${item.error}`).join(' ')}</p> : null}
     <ErrorLine error={error} />
-    <Actions onBack={onBack} onSkip={onNext} next={() => void importPicked()} busy={busy}
-      nextLabel={picked.size ? `${result ? 'Retry' : 'Import'} ${picked.size} ${picked.size === 1 ? 'item' : 'items'}` : 'Continue'} />
+    <Actions onBack={onBack} onSkip={onNext} next={() => void next()} busy={busy}
+      nextLabel={picked.size ? `${result?.failed.length ? 'Retry' : 'Import'} ${picked.size} ${picked.size === 1 ? 'item' : 'items'}` : 'Continue'} />
   </>
 }
 
@@ -302,6 +231,8 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
   const desktop = useDesktopBridge()
   const setupBridge = desktop?.info.capabilities.includes('localSetup') ? desktop.bridge : null
   const { keys, setKey } = useLocalModelKeys()
+  const { plans, signIn, cancelSignIn } = useLocalPlans()
+  const [signing, setSigning] = useState<PrivatePlanProvider | null>(null)
   const [scan, setScan] = useState<LocalSetupScan | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [adding, setAdding] = useState<LocalModelProvider | null>(null)
@@ -321,10 +252,16 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
     catch (failure) { setError(errorText(failure, 'That key didn’t work.')) }
     finally { setBusy(null) }
   }
+  const signInTo = async (provider: PrivatePlanProvider) => {
+    setSigning(provider); setError(null)
+    try { await signIn(provider) }
+    catch (failure) { const message = errorText(failure, ''); if (!/cancelled/i.test(message)) setError(message || 'Sign-in didn’t finish. Try again.') }
+    finally { setSigning(null) }
+  }
   const found = scan?.shellKeys ?? []
   const others = (Object.keys(PROVIDER_LABEL) as LocalModelProvider[]).filter((provider) => !found.some((key) => key.provider === provider))
   return <>
-    <Heading title="How private threads think" detail="Threads that stay on this computer call a model with your own key. Synced threads use Overlay’s models." />
+    <Heading title="How private threads think" detail="Threads that stay on this computer call a model with your own plan or key. Synced threads use Overlay’s models." />
     {found.length ? <>
       <Label>Found on this computer</Label>
       <List>{found.map((key) => <Row key={key.provider} icon={<ProviderLogo provider={key.provider} size={16} />} title={PROVIDER_LABEL[key.provider]}
@@ -346,18 +283,24 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
           detail={has(provider) ? 'In your keychain' : provider === 'openrouter' ? 'Hundreds of models with one key' : undefined}
           end={has(provider) ? <Done>Added</Done> : <Button size="sm" variant="ghost" onClick={() => setAdding(provider)}><KeyRound size={14} />Add key</Button>} />)}
     </List>
-    {scan && (scan.subscriptions.claude || scan.subscriptions.chatgpt) ? <>
+    {plans?.available ? <>
       <Label>Use a plan you already pay for</Label>
-      <List>
-        {scan.subscriptions.claude ? <Row icon={<ProviderLogo provider="anthropic" size={16} />} title="Claude plan" detail="Signed in to Claude Code" end={<Soon />} /> : null}
-        {scan.subscriptions.chatgpt ? <Row icon={<ProviderLogo provider="openai" size={16} />} title="ChatGPT plan" detail="Signed in to Codex" end={<Soon />} /> : null}
-      </List>
+      <List>{PRIVATE_PLAN_PROVIDERS.map((provider) => {
+        const plan = plans[provider]
+        const name = PRIVATE_PLAN_NAMES[provider]
+        return <Row key={provider} icon={<ProviderLogo provider={provider === 'claude' ? 'anthropic' : 'openai'} size={16} />} title={`${name} plan`}
+          detail={plan.signedIn ? `Signed in${plan.account ? ` · ${plan.account}` : ''}`
+            : signing === provider ? 'Finish signing in in your browser'
+            : scan?.subscriptions[provider] ? `${provider === 'claude' ? 'Claude Code' : 'Codex'} uses it on this computer` : undefined}
+          end={plan.signedIn ? <Done>Signed in</Done>
+            : signing === provider ? <Button size="sm" variant="ghost" onClick={cancelSignIn}><Loader2 size={14} className="animate-spin" />Cancel</Button>
+            : <Button size="sm" variant="ghost" disabled={signing !== null || busy !== null} onClick={() => void signInTo(provider)}>Sign in</Button>} />
+      })}</List>
     </> : null}
     <ErrorLine error={error} />
     <Actions onBack={onBack} onSkip={onNext} next={onNext} />
   </>
 }
-const Soon = () => <span className="whitespace-nowrap rounded-full border border-(--border) px-2 py-0.5 text-[11px] text-(--muted)">Coming soon</span>
 
 function ComputerStep({ workspaceId, onBack, onNext }: { workspaceId: string; onBack(): void; onNext(): void }) {
   const computer = useThisComputer(workspaceId)
@@ -438,7 +381,7 @@ function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBac
   return <>
     <Heading title="Pick a plan" detail={alreadyPaid ? 'This workspace already has a plan.' : team ? `${state.workspaceName.trim() || 'Your workspace'} is a team workspace, so it needs the paid plan` : 'Start free on this computer. Upgrade any time in Settings.'} />
     <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {card('free', 'Free', '$0', 'forever', ['Private threads on this computer', 'Your own model keys', 'Memory, notes, tasks and files up to 100 MB', '50 web searches a month'])}
+      {card('free', 'Free', '$0', 'forever', ['Private threads on this computer', 'Your own plans and model keys', 'Memory, notes, tasks and files up to 100 MB', '50 web searches a month'])}
       {card('paid', 'Overlay', '$8', '/ month', ['Everything in Free', '$8 of usage credit every month', 'Overlay’s models, synced threads and Cloud computer', 'Gmail, Calendar, Slack, Notion and more', 'Invite your team'])}
     </div>
     {paid ? <label className="mt-4 flex items-start gap-2 text-xs text-(--muted)">

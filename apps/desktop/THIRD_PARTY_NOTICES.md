@@ -27,6 +27,12 @@ Important native and model components include:
   `native-artifacts.json` and downloaded by `scripts/build-agent-host-bundle.mjs`.
   It runs the bundled Agent Host. Its license, which also covers the libraries
   compiled into it, is preserved as `third_party/licenses/Node-LICENSE`.
+- CLIProxyAPI (https://github.com/router-for-me/CLIProxyAPI) — MIT, Copyright (c)
+  2025 Luis Pater and Router-For.ME. The official release 8.1.7 binary, pinned by
+  the checksum of its release archive and of the binary in `native-artifacts.json`
+  and downloaded by `scripts/build-agent-host-bundle.mjs`. It runs on this
+  computer only, for private threads that use the person's Claude or ChatGPT plan.
+  Its license is preserved as `third_party/licenses/CLIProxyAPI-LICENSE`.
 - Overlay Agent Host (`@layernorm/overlay-agent-host`) — AGPL-3.0-only, pinned by
   `agent-host-bundle/package-lock.json`.
 - Native npm dependencies — licenses recorded in their package metadata and the

@@ -89,9 +89,13 @@ local-tools host from its `config.json` at launch once the session is verified; 
 the host. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged
 builds always use the pin.
 Private threads (bridge capability `localThreads`, macOS only for now) run a thread's agent on this computer with
-the person's own model keys: the app starts the bundled host as `overlay-agent-host private` over Node.js IPC, keeps
-the keys in the keychain and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains a Model
-keys section. `internal/develop/private-threads.md` has the contract and rules.
+the person's own model keys, a Claude or ChatGPT plan signed in through the bundled CLIProxyAPI (`plan-proxy*.ts`,
+loopback only, tokens in the keychain), or Overlay's metered models in a paid workspace. The app starts the bundled
+host as `overlay-agent-host private` over Node.js IPC, keeps keys and plan sign-ins in the keychain, hands the host
+only what one run needs, and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains Plans
+and Model keys sections. CLIProxyAPI is pinned and checksum-verified by `scripts/build-agent-host-bundle.mjs`
+(`native-artifacts.json`, license in `third_party/licenses/CLIProxyAPI-LICENSE`) and packaged beside Node.js in
+`Resources/agent-host`, so electron-builder signs and notarizes it with the app; `verify-macos-artifact.mjs` checks it. `internal/develop/private-threads.md` has the contract and rules.
 First-run setup (bridge capability `localSetup`, macOS only for now) runs before the onboarding conversation for a
 new account: the server sets `desktopSetup` on `GET /api/v1/onboarding/session` when setup has not started and the
 person's only workspace is their own personal one. `DesktopOnboarding` (`src/app/_components/onboarding/desktop/`)
@@ -102,8 +106,13 @@ MCP servers by name, plus model keys in the login shell (variable and last four 
 `localSetup.import` reads the ticked items again in the main process and adds them through Overlay's own API with the
 app's session (memories, personal skills, creator-only agents, personal MCP servers); contents, header tokens and keys
 never reach the page. `localSetup.useShellKey` checks a shell key and keeps it in the keychain. Local (command) MCP
-servers are listed but not imported. Each import request's idempotency key is a hash of what it sends, so retries never
-duplicate and an edited file imports again. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_SETUP_HOME` to scan a fixture
+servers import onto this computer, not the workspace, when the bundled host runs them (capability `localMcp`,
+`private-threads.md`); older apps list them as coming later. Each import request's idempotency key is a hash of what it
+sends, so retries never duplicate, and the app records what it imported per workspace (`local-setup-imports.json`):
+`localSetup.scan({ workspaceId })` marks items already imported with the same contents, and importing them again sends
+nothing. An edited file is offered again and imports as a new item. Settings → Import (desktop only, section `import`
+from `desktopSettingsSections`) runs the same scan and import with the same list (`LocalSetupList`,
+`src/components/desktop/`). Unpackaged builds may set `OVERLAY_DESKTOP_DEV_SETUP_HOME` to scan a fixture
 folder for QA. Desktop `src/main/services/local-setup*.ts`;
 `internal/plans/DESKTOP_ONBOARDING_PLAN.md` has the plan.
 Each shortcut shows as key caps inside the feature it opens (dictation, chat, notes); click it, then
@@ -155,7 +164,10 @@ fast initial render cannot leave the launched app hidden.
 The chat/files/knowledge CI boundaries retain canonical web renderer checks and
 share a native-shell guard (`scripts/ci/desktop-web-shell-boundary.mjs`): duplicate
 desktop renderers/provider clients remain retired, the desktop must link the shared
-bridge package rather than keep a copy, and its Agent Host pin must match web enrollment.
+bridge package rather than keep a copy, and its Agent Host pin must match web enrollment or trail it by one release. The
+host is published from main only after the release that bumps it merges, and desktop CI installs the pin from npm, so a
+host release goes: merge the bump (web enrollment moves), run `publish-agent-host.yml`, then move the desktop pin and
+`agent-host-bundle/package-lock.json` in the next change.
 
 Run bridge package tests, web type/lint checks and desktop `bun run test`, `bun run
 build`, `bun run check:no-provider-sdks`, and `bun run test:e2e`. Electron Playwright

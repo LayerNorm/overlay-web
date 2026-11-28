@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { isAbsolute, join } from 'node:path'
 import type { LocalSetupApp, LocalSetupItem, LocalSetupItemKind } from '@overlay/desktop-bridge'
 
 /**
@@ -16,6 +16,10 @@ export type McpServerEntry = {
   name: string
   url?: string
   command?: string
+  /** A local server's arguments, environment values and folder. */
+  args: string[]
+  env: Record<string, string>
+  cwd?: string
   transport: 'sse' | 'streamable-http'
   headers: Record<string, string>
 }
@@ -25,6 +29,7 @@ export type ResolvedLocalSetupItem =
   | { id: string; kind: 'skill'; name: string; description: string; instructions: string }
   | { id: string; kind: 'agent'; name: string; description: string; instructions: string }
   | { id: string; kind: 'mcp_remote'; name: string; server: McpServerEntry }
+  | { id: string; kind: 'mcp_local'; name: string; app: string; server: McpServerEntry & { command: string } }
 
 type Source = {
   app: LocalSetupApp['id']
@@ -90,24 +95,50 @@ export function parseFrontMatter(text: string): { fields: Record<string, string>
   return { fields, body: match[2]!.trim() }
 }
 
-/** The `[mcp_servers.<name>]` tables of a Codex config.toml; only the keys Overlay needs. */
+/**
+ * The `[mcp_servers.<name>]` tables of a Codex config.toml (and their `.env` tables); only the keys Overlay needs.
+ * Values are strings, one-line string arrays (`args`) or one-line inline tables (`env`).
+ */
 export function parseCodexMcpServers(text: string): Record<string, Record<string, unknown>> {
   const servers: Record<string, Record<string, unknown>> = {}
   let current: Record<string, unknown> | null = null
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim()
     if (!line || line.startsWith('#')) continue
-    const table = /^\[mcp_servers\.("?)([^\]"]+)\1\]$/.exec(line)
-    if (table) { current = servers[table[2]!] = {}; continue }
+    const table = /^\[mcp_servers\.(?:"([^"]+)"|([\w-]+))(\.env)?\]$/.exec(line)
+    if (table) {
+      const server: Record<string, unknown> = servers[table[1] ?? table[2]!] ??= {}
+      current = table[3] ? (server.env ??= {}) as Record<string, unknown> : server
+      continue
+    }
     if (line.startsWith('[')) { current = null; continue }
     const pair = /^([\w-]+)\s*=\s*(.+)$/.exec(line)
-    if (current && pair) {
-      const value = pair[2]!.trim()
-      current[pair[1]!] = /^".*"$/.test(value) ? value.slice(1, -1) : value
-    }
+    if (current && pair) current[pair[1]!] = tomlValue(pair[2]!.trim())
   }
   return servers
 }
+
+const TOML_STRING = /"((?:[^"\\]|\\.)*)"|'([^']*)'/g
+
+function tomlString(quoted: string): string {
+  if (quoted.startsWith("'")) return quoted.slice(1, -1)
+  try { return JSON.parse(quoted) as string } catch { return quoted.slice(1, -1) }
+}
+
+function tomlValue(value: string): unknown {
+  if (/^"(?:[^"\\]|\\.)*"$|^'[^']*'$/.test(value)) return tomlString(value)
+  if (value.startsWith('[')) return [...value.matchAll(TOML_STRING)].map((match) => tomlString(match[0]))
+  if (value.startsWith('{')) {
+    return Object.fromEntries([...value.matchAll(/([\w-]+|"[^"]+")\s*=\s*("(?:[^"\\]|\\.)*"|'[^']*')/g)]
+      .map((match) => [match[1]!.replace(/^"|"$/g, ''), tomlString(match[2]!)]))
+  }
+  return value
+}
+
+const stringRecord = (value: unknown): Record<string, string> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>
+    : {}
 
 function mcpEntries(source: Source): McpServerEntry[] {
   if (!source.mcp) return []
@@ -128,12 +159,12 @@ function mcpEntries(source: Source): McpServerEntry[] {
     const url = typeof entry.httpUrl === 'string' ? entry.httpUrl : typeof entry.url === 'string' ? entry.url : undefined
     const command = typeof entry.command === 'string' ? entry.command : undefined
     if (!url && !command) return []
-    const headers = entry.headers && typeof entry.headers === 'object' && !Array.isArray(entry.headers)
-      ? Object.fromEntries(Object.entries(entry.headers as Record<string, unknown>).filter(([, v]) => typeof v === 'string')) as Record<string, string>
-      : {}
+    const headers = stringRecord(entry.headers)
     const transport = entry.type === 'sse' || (typeof entry.url === 'string' && typeof entry.httpUrl !== 'string' && source.app === 'gemini_cli')
       ? 'sse' as const : 'streamable-http' as const
-    return [{ name, url, command, transport, headers }]
+    const args = Array.isArray(entry.args) ? entry.args.filter((arg): arg is string => typeof arg === 'string').slice(0, 100) : []
+    const cwd = typeof entry.cwd === 'string' && isAbsolute(entry.cwd) ? entry.cwd : undefined
+    return [{ name, url, command, args, env: stringRecord(entry.env), ...(cwd ? { cwd } : {}), transport, headers }]
   })
 }
 
@@ -165,7 +196,8 @@ function lineCount(text: string) {
   return text.split(/\r?\n/).filter((line) => line.trim()).length
 }
 
-export function scanLocalSetup(home: string, platform: NodeJS.Platform = process.platform): LocalSetupApp[] {
+/** `localMcp`: this app can run MCP servers on this computer, so local servers can be imported. */
+export function scanLocalSetup(home: string, platform: NodeJS.Platform = process.platform, options: { localMcp?: boolean } = {}): LocalSetupApp[] {
   return sources(home, platform).flatMap((source) => {
     const items: LocalSetupItem[] = []
     const instructions = source.instructions ? readText(source.instructions) : null
@@ -188,7 +220,10 @@ export function scanLocalSetup(home: string, platform: NodeJS.Platform = process
         const auth = Object.keys(server.headers).length ? ' · with a header token' : ''
         items.push({ id: itemId(source.app, 'mcp_remote', server.name), kind: 'mcp_remote', name: server.name, detail: `MCP server · ${host}${auth}`, importable: /^https:\/\//.test(server.url) })
       } else {
-        items.push({ id: itemId(source.app, 'mcp_local', server.name), kind: 'mcp_local', name: server.name, detail: 'MCP server · runs a command on this computer', importable: false })
+        const program = server.command!.split(/[\\/]/).at(-1)
+        const env = Object.keys(server.env).length
+        const values = env ? ` · ${env} environment ${env === 1 ? 'value' : 'values'}` : ''
+        items.push({ id: itemId(source.app, 'mcp_local', server.name), kind: 'mcp_local', name: server.name, detail: `Runs on this computer · ${program}${values}`, importable: Boolean(options.localMcp) })
       }
     }
     return items.length ? [{ id: source.app, name: source.name, location: source.location, items }] : []
@@ -212,6 +247,9 @@ export function resolveLocalSetupItem(home: string, id: string, platform: NodeJS
     for (const server of mcpEntries(source)) {
       if (server.url && /^https:\/\//.test(server.url) && id === itemId(source.app, 'mcp_remote', server.name)) {
         return { id, kind: 'mcp_remote', name: server.name, server }
+      }
+      if (!server.url && server.command && id === itemId(source.app, 'mcp_local', server.name)) {
+        return { id, kind: 'mcp_local', name: server.name, app: source.name, server: { ...server, command: server.command } }
       }
     }
   }

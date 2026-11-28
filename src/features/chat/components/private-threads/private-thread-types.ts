@@ -9,6 +9,8 @@ export type WorkspaceAgentLike = {
   instructions?: string
   /** The agent's model in Overlay's catalog; a private thread runs it with the person's key. */
   modelId: string
+  /** Its tool grant; MCP servers in it bring this computer's local MCP servers into private threads. */
+  allowedToolIds?: string[]
   avatarColor?: string
   avatarShape?: string
   agentRole?: string

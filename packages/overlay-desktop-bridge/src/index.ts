@@ -1,4 +1,7 @@
 import { z } from "zod";
+import { localMcpEnvName, type LocalMcpServer } from "./local-mcp";
+
+export { localMcpEnvName, parseEnvironmentLines, splitCommandLine, type LocalMcpServer } from "./local-mcp";
 
 export const BRIDGE_VERSION = 1 as const;
 export const BRIDGE_CHANNEL = "overlay-desktop:call";
@@ -15,6 +18,7 @@ export const capabilities = [
   "localComputer",
   "localThreads",
   "localSetup",
+  "localMcp",
   "updates",
   "diagnostics",
 ] as const;
@@ -39,6 +43,16 @@ export const localModelProviders = [
   "openrouter",
 ] as const;
 export type LocalModelProvider = (typeof localModelProviders)[number];
+/** Plans a person signs in to on this computer (Claude, ChatGPT), used through the desktop's local CLIProxyAPI. */
+export const localPlanProviders = ["claude", "chatgpt"] as const;
+export type LocalPlanProvider = (typeof localPlanProviders)[number];
+/** How a private turn calls its model: a key, a plan, or Overlay's metered models (paid workspaces). */
+export const localModelSources = [
+  ...localModelProviders,
+  ...localPlanProviders,
+  "overlay",
+] as const;
+export type LocalModelSource = (typeof localModelSources)[number];
 const localFolder = z.string().trim().min(1).max(4096).startsWith("/");
 export const methodSchemas = {
   handshake: empty,
@@ -147,9 +161,10 @@ export const methodSchemas = {
         .array(z.record(z.string(), z.unknown()))
         .min(1)
         .max(2000),
+      /** The desktop adds the key, the plan proxy's secret or a token for Overlay's models; the page never holds them. */
       model: z
         .object({
-          provider: z.enum(localModelProviders),
+          provider: z.enum(localModelSources),
           modelId: z.string().trim().min(1).max(200),
         })
         .strict(),
@@ -157,6 +172,8 @@ export const methodSchemas = {
         .object({
           name: z.string().trim().min(1).max(200),
           instructions: z.string().max(50_000).optional(),
+          /** The agent's grant includes MCP servers: this computer's local MCP servers join the turn. */
+          localMcp: z.boolean().optional(),
         })
         .strict(),
       approvalMode: z.enum(["ask", "auto"]),
@@ -182,10 +199,24 @@ export const methodSchemas = {
     })
     .strict(),
   "localThreads.models": z
-    .object({ provider: z.enum(localModelProviders) })
+    .object({ provider: z.enum([...localModelProviders, ...localPlanProviders]) })
     .strict(),
-  /** Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets. */
-  "localSetup.scan": empty,
+  /** Which plans this computer is signed in to for private threads. Tokens never leave the desktop app. */
+  "localThreads.plans": empty,
+  /** Opens the provider's sign-in in the browser and resolves once it finishes; tokens go to the system keychain. */
+  "localThreads.signIn": z
+    .object({ provider: z.enum(localPlanProviders) })
+    .strict(),
+  /** Stops waiting for a sign-in started with `localThreads.signIn`. */
+  "localThreads.cancelSignIn": empty,
+  "localThreads.signOut": z
+    .object({ provider: z.enum(localPlanProviders) })
+    .strict(),
+  /**
+   * Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets.
+   * With a workspace, items already imported into it are marked.
+   */
+  "localSetup.scan": z.object({ workspaceId: id }).strict().optional(),
   /** Reads the chosen items again and adds them to the workspace with the app's own session. */
   "localSetup.import": z
     .object({
@@ -201,6 +232,22 @@ export const methodSchemas = {
   "localSetup.useShellKey": z
     .object({ provider: z.enum(localModelProviders) })
     .strict(),
+  /** MCP servers that run on this computer for private threads; environment values are never returned. */
+  "localMcp.list": empty,
+  /** Adds a server by hand. Environment values go to the system keychain. */
+  "localMcp.add": z
+    .object({
+      name: z.string().trim().min(1).max(100),
+      command: z.string().trim().min(1).max(4096),
+      args: z.array(z.string().max(4096)).max(100),
+      env: z
+        .record(localMcpEnvName, z.string().max(32_768))
+        .refine((value) => Object.keys(value).length <= 100),
+    })
+    .strict(),
+  "localMcp.remove": z.object({ id }).strict(),
+  /** Starts the server (or reuses it) and lists its tools. */
+  "localMcp.check": z.object({ id }).strict(),
   "diagnostics.status": empty,
   "diagnostics.configure": z.object({ enabled: z.boolean() }).strict(),
   "updates.status": empty,
@@ -258,6 +305,14 @@ export type LocalThreadMessage = {
 };
 export type LocalThreadTurnState = "running" | "finished" | "stopped" | "error";
 export type LocalModelKeys = Record<LocalModelProvider, boolean>;
+/** A plan on this computer: signed in or not, and the account's email when the provider gives one. */
+export type LocalPlanStatus = { signedIn: boolean; account: string | null };
+export type LocalPlans = {
+  /** False when this copy of Overlay can't run plans (an older app or Agent Host). */
+  available: boolean;
+  /** Whether this copy of Overlay can run Overlay's metered models in private threads (paid workspaces). */
+  overlayModels: boolean;
+} & Record<LocalPlanProvider, LocalPlanStatus>;
 /** What an AI tool keeps on this computer, and what it becomes in Overlay when imported. */
 export type LocalSetupItemKind =
   | "instructions"
@@ -271,8 +326,10 @@ export type LocalSetupItem = {
   kind: LocalSetupItemKind;
   name: string;
   detail: string;
-  /** Local (command) MCP servers can't be imported yet. */
+  /** False when this app can't bring it over (a local MCP server on an app without local MCP support, an http URL). */
   importable: boolean;
+  /** Already brought into this workspace with the same contents (or onto this computer, for a local server). */
+  imported?: boolean;
 };
 export type LocalSetupApp = {
   id: "claude_code" | "codex" | "claude_desktop" | "cursor" | "gemini_cli";
@@ -285,7 +342,7 @@ export type LocalSetupScan = {
   apps: LocalSetupApp[];
   /** Model keys set in the login shell's environment; only the variable name and the key's last four characters. */
   shellKeys: { provider: LocalModelProvider; variable: string; hint: string }[];
-  /** Model plans this computer is signed in to, for using them in private threads later. */
+  /** Whether Claude Code and Codex use a plan on this computer: a hint to sign in to that plan for private threads. */
   subscriptions: { claude: boolean; chatgpt: boolean };
 };
 export type LocalSetupImportResult = {
@@ -354,9 +411,17 @@ export type Results = {
   "localThreads.keys": LocalModelKeys;
   "localThreads.setKey": LocalModelKeys;
   "localThreads.models": { models: { id: string; name: string }[] };
+  "localThreads.plans": LocalPlans;
+  "localThreads.signIn": LocalPlans;
+  "localThreads.cancelSignIn": void;
+  "localThreads.signOut": LocalPlans;
   "localSetup.scan": LocalSetupScan;
   "localSetup.import": LocalSetupImportResult;
   "localSetup.useShellKey": LocalModelKeys;
+  "localMcp.list": { servers: LocalMcpServer[] };
+  "localMcp.add": { servers: LocalMcpServer[] };
+  "localMcp.remove": { servers: LocalMcpServer[] };
+  "localMcp.check": { tools: { name: string; description: string }[] };
   "diagnostics.status": { enabled: boolean };
   "diagnostics.configure": void;
   "updates.status": UpdateStatus;
@@ -406,6 +471,7 @@ export function getDesktopBridge(): DesktopBridge | null {
     ? bridge
     : null;
 }
+
 export function capabilityForMethod(method: Method): Capability | null {
   return method === "handshake" ? null : (method.split(".")[0] as Capability);
 }

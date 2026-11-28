@@ -44,8 +44,26 @@ export function desktopWebShellViolations(root) {
   const bundledHostVersion = bundledHost
     ? JSON.parse(bundledHost).dependencies?.['@layernorm/overlay-agent-host']
     : undefined
-  if (!hostVersion || bundledHostVersion !== hostVersion)
-    failures.push('desktop Agent Host pin must match web enrollment')
+  // The desktop installs its pin from npm, and the host is published from main only after the release that bumps it
+  // merges, so the pin may trail web enrollment by one release; it moves up once that release is on npm. Never ahead.
+  const versionParts = (version) => version?.split('.').map(Number)
+  const compareVersions = (a, b) => {
+    for (let i = 0; i < 3; i++) if (a[i] !== b[i]) return a[i] - b[i]
+    return 0
+  }
+  const enrolled = versionParts(hostVersion)
+  const bundled = versionParts(bundledHostVersion)
+  if (
+    !enrolled ||
+    !bundled ||
+    enrolled.length !== 3 ||
+    bundled.length !== 3 ||
+    [...enrolled, ...bundled].some(Number.isNaN) ||
+    compareVersions(bundled, enrolled) > 0 ||
+    enrolled[0] !== bundled[0] ||
+    (enrolled[0] === 0 && enrolled[1] - bundled[1] > 1)
+  )
+    failures.push('desktop Agent Host pin must match web enrollment or trail it by one release')
   const manifest = read(join(desktop, 'package.json'))
   if (!manifest) failures.push('desktop manifest is missing')
   else {

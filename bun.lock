@@ -365,7 +365,7 @@
     },
     "packages/overlay-agent-bridge-protocol": {
       "name": "@layernorm/overlay-agent-bridge-protocol",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "dependencies": {
         "zod": "^4.6.7",
       },
@@ -376,7 +376,7 @@
     },
     "packages/overlay-agent-host": {
       "name": "@layernorm/overlay-agent-host",
-      "version": "0.7.0",
+      "version": "0.8.0",
       "bin": {
         "overlay-agent-host": "./src/cli.mjs",
       },
@@ -385,7 +385,8 @@
         "@ai-sdk/google": "^4.0.33",
         "@ai-sdk/mcp": "2.0.45",
         "@ai-sdk/openai": "^4.0.21",
-        "@layernorm/overlay-agent-bridge-protocol": "0.7.0",
+        "@layernorm/overlay-agent-bridge-protocol": "0.8.0",
+        "@modelcontextprotocol/sdk": "1.32.1",
         "@openrouter/ai-sdk-provider": "^3.0.0",
         "ai": "7.0.93",
         "tsx": "^4.8.1",
