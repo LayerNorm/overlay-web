@@ -37,11 +37,11 @@ jobs:
           persist-credentials: false
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # github/codeql-action/init v4.39.1
+        uses: github/codeql-action/init@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # github/codeql-action/init v4.39.4
         with:
           languages: ${{ matrix.language }}
 
       # JS/TS analysis reads source directly; npm lifecycle scripts were already disabled.
       # Keep the same queries and source scope without reinstalling the workspace.
       - name: Perform CodeQL analysis
-        uses: github/codeql-action/analyze@9b3254085494b55a0f7c4c2b3d2d52cc712ce370 # github/codeql-action/analyze v4.39.1
+        uses: github/codeql-action/analyze@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # github/codeql-action/analyze v4.39.4
