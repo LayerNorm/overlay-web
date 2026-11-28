@@ -25,7 +25,7 @@
     "test:watch": "vitest",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",
-    "postinstall": "node scripts/postinstall.mjs",
+    "postinstall": "node -e \"process.platform==='darwin'&&require('node:child_process').execFileSync('electron-builder',['install-app-deps'],{stdio:'inherit'})\"",
     "build:ax-helper": "bash scripts/build-ax-helper.sh",
     "build:whisperkit": "bash scripts/build-whisperkit-bundle.sh",
     "build:parakeet": "bash scripts/build-parakeet-bundle.sh",
