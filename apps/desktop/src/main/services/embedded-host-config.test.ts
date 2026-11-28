@@ -4,6 +4,7 @@ import { join } from 'node:path'
 import {
   buildEmbeddedHostArgs,
   buildEmbeddedHostRunArgs,
+  resolveCliProxyBinary,
   resolveEmbeddedHostRuntime,
   verificationPhraseFrom,
   isValidServerOrigin,
@@ -109,5 +110,14 @@ describe('local tools (this Mac as a Computer)', () => {
     expect(
       resolveEmbeddedHostRuntime({ packaged: false, ...locations }, { OVERLAY_DESKTOP_DEV_HOST_CLI: 'evil.mjs' }, () => true)?.cliPath
     ).toMatch(/^\/repo\/agent-host-bundle\//)
+  })
+})
+
+describe('resolveCliProxyBinary', () => {
+  it('finds the plan proxy beside the bundled Node.js, packaged or not', () => {
+    const locations = { resourcesPath: '/App/Resources', appPath: '/repo' }
+    expect(resolveCliProxyBinary({ packaged: true, ...locations }, () => true)).toBe('/App/Resources/agent-host/cli-proxy-api')
+    expect(resolveCliProxyBinary({ packaged: false, ...locations }, () => true)).toBe('/repo/agent-host-bundle/runtime/cli-proxy-api')
+    expect(resolveCliProxyBinary({ packaged: true, ...locations }, () => false)).toBeNull()
   })
 })

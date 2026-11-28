@@ -23,6 +23,23 @@ test('OpenRouter runs models whose provider has no key, or that the provider key
   assert.deepEqual(resolvePrivateModel('anthropic/claude-sonnet-5.5', 'anthropic', [openrouter]), { provider: 'openrouter', modelId: 'anthropic/claude-sonnet-5.5' })
 })
 
+test('a signed-in plan runs its provider’s models before any key', () => {
+  const claude: ProviderModelList = { provider: 'claude', models: [{ id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5' }] }
+  const chatgpt: ProviderModelList = { provider: 'chatgpt', models: [{ id: 'gpt-5.5', name: 'GPT-5.5' }] }
+  assert.deepEqual(resolvePrivateModel('anthropic/claude-sonnet-5.5', 'anthropic', [anthropic, openrouter, claude, chatgpt]), { provider: 'claude', modelId: 'claude-sonnet-5-5' })
+  assert.deepEqual(resolvePrivateModel('openai/gpt-5.5', 'openai', [claude, chatgpt]), { provider: 'chatgpt', modelId: 'gpt-5.5' })
+  // A plan that doesn't offer the model falls through to the keys.
+  assert.deepEqual(resolvePrivateModel('anthropic/claude-sonnet-4.5', 'anthropic', [claude, anthropic]), { provider: 'anthropic', modelId: 'claude-sonnet-4-5-20250929' })
+  // ChatGPT never runs an Anthropic model.
+  assert.equal(resolvePrivateModel('anthropic/claude-opus-9', 'anthropic', [chatgpt]), null)
+})
+
+test('Overlay’s models run the agent model when nothing on this computer can, in a paid workspace', () => {
+  assert.deepEqual(resolvePrivateModel('openai/gpt-6-astra', 'openai', [anthropic], { available: true }), { provider: 'overlay', modelId: 'openai/gpt-6-astra' })
+  assert.deepEqual(resolvePrivateModel('anthropic/claude-sonnet-5.5', 'anthropic', [anthropic], { available: true }), { provider: 'anthropic', modelId: 'claude-sonnet-5-5' })
+  assert.equal(resolvePrivateModel('openai/gpt-6-astra', 'openai', [anthropic], { available: false }), null)
+})
+
 test('no key that can run the agent model resolves to nothing', () => {
   assert.equal(resolvePrivateModel('openai/gpt-6-astra', 'openai', [anthropic]), null)
   assert.equal(resolvePrivateModel('anthropic/claude-opus-9', 'anthropic', [anthropic, openrouter]), null)

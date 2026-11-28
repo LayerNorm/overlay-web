@@ -45,6 +45,20 @@
       "upstreamBuildHomes": [
         "admin/build/ws/"
       ]
+    },
+    {
+      "path": "agent-host-bundle/runtime/cli-proxy-api",
+      "sha256": "39970dc956e03a23199d18b850169a24f4b80d71fad25d47c6e32f3c04505607",
+      "architecture": "arm64",
+      "source": "https://github.com/router-for-me/CLIProxyAPI/releases/download/v8.1.7/CLIProxyAPI_8.1.7_darwin_aarch64.tar.gz",
+      "sourceRevision": "667e6f2473e898ac3a6d16c01c9ce5cdf739a13b528cc80d328651a350691a2c",
+      "sourceLicense": "MIT",
+      "licenseFile": "third_party/licenses/CLIProxyAPI-LICENSE",
+      "buildScript": "scripts/build-agent-host-bundle.mjs",
+      "fetched": true,
+      "upstreamBuildHomes": [
+        "runner/"
+      ]
     }
   ]
 }

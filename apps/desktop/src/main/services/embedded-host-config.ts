@@ -54,6 +54,21 @@ export function resolveEmbeddedHostRuntime(
   return exists(runtime.nodePath) && exists(runtime.cliPath) ? runtime : null
 }
 
+/**
+ * The bundled CLIProxyAPI binary beside the host's Node.js (scripts/build-agent-host-bundle.mjs), which runs the
+ * Claude and ChatGPT plans a person signs in to for private threads; null when this build does not have it.
+ */
+export function resolveCliProxyBinary(
+  input: { packaged: boolean; resourcesPath: string; appPath: string },
+  exists: (path: string) => boolean = existsSync
+): string | null {
+  const directory = input.packaged
+    ? join(input.resourcesPath, 'agent-host')
+    : join(input.appPath, 'agent-host-bundle', 'runtime')
+  const binary = join(directory, 'cli-proxy-api')
+  return exists(binary) ? binary : null
+}
+
 /** Connects this computer with local tools only; the host never starts a third-party harness. */
 export function buildEmbeddedHostArgs(args: {
   code: string

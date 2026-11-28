@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { DesktopBridge, LocalModelKeys, LocalThread } from '@overlay/desktop-bridge'
+import type { DesktopBridge, LocalModelKeys, LocalPlanProvider, LocalPlans, LocalThread } from '@overlay/desktop-bridge'
 import { useOptionalAuth } from '@/contexts/AuthContext'
 import { useDesktopBridge } from './DesktopProvider'
 
@@ -65,4 +65,44 @@ export function useLocalModelKeys() {
     return next
   }, [bridge])
   return { available: Boolean(bridge), keys, setKey }
+}
+
+const NO_PLANS: LocalPlans = {
+  available: false,
+  overlayModels: false,
+  claude: { signedIn: false, account: null },
+  chatgpt: { signedIn: false, account: null },
+}
+
+/**
+ * The Claude and ChatGPT plans this computer is signed in to for private threads. Sign-in opens the provider in the
+ * browser; the desktop app keeps the tokens in the keychain and the page only learns who is signed in.
+ */
+export function useLocalPlans() {
+  const bridge = useLocalThreadsBridge()
+  const [plans, setPlans] = useState<LocalPlans | null>(null)
+  useEffect(() => {
+    if (!bridge) return
+    let live = true
+    // A desktop app from before plans has no such method: it simply has none.
+    void bridge.call('localThreads.plans', undefined).then(
+      (value) => { if (live) setPlans(value) },
+      () => { if (live) setPlans(NO_PLANS) },
+    )
+    return () => { live = false }
+  }, [bridge])
+  const signIn = useCallback(async (provider: LocalPlanProvider) => {
+    if (!bridge) throw new Error('Open Overlay on this computer to sign in.')
+    const next = await bridge.call('localThreads.signIn', { provider })
+    setPlans(next)
+    return next
+  }, [bridge])
+  const cancelSignIn = useCallback(() => {
+    void bridge?.call('localThreads.cancelSignIn', undefined).catch(() => undefined)
+  }, [bridge])
+  const signOut = useCallback(async (provider: LocalPlanProvider) => {
+    if (!bridge) return
+    setPlans(await bridge.call('localThreads.signOut', { provider }))
+  }, [bridge])
+  return { plans: bridge ? plans : NO_PLANS, signIn, cancelSignIn, signOut }
 }

@@ -3,6 +3,7 @@ import { localToolsCapabilitySchema } from './local-tools.js'
 export * from './local-tools.js'
 export * from './computer-tools.js'
 export * from './agent-context.js'
+export * from './private-model-relay.js'
 
 /**
  * Contract between Overlay and an Agent Host: enrollment, device-signed host

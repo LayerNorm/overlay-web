@@ -8,7 +8,7 @@ Node.js 24 or newer is required. Overlay's one-copy command supplies a pinned No
 when the machine's default `node` is older:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.8.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://overlay.works \
   --kind vps \
@@ -78,7 +78,7 @@ network URL:
 The equivalent enrollment form is:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.8.0 \
   overlay-agent-host connect <enrollment-code> \
   --server https://overlay.works \
   --kind vps \
@@ -102,9 +102,9 @@ Terminal closes and returns after login or process failure. Use the exact config
 `connect`:
 
 ```sh
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.8.0 \
   overlay-agent-host service install --config "$HOME/.overlay/agent-host/config.json"
-npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.7.0 \
+npx --yes --package node@24 --package @layernorm/overlay-agent-host@0.8.0 \
   overlay-agent-host service status --config "$HOME/.overlay/agent-host/config.json"
 ```
 
@@ -181,6 +181,8 @@ enrollment remains rejected.
 ## Private threads (started by Overlay Desktop)
 
 `overlay-agent-host private --state-dir <dir>` runs threads whose Cloud sync is off. Overlay Desktop starts it with a
-Node.js IPC channel; it opens no port, runs one AI SDK `ToolLoopAgent` per turn with this computer's tools, calls only
-the model provider the person chose with their own key, and keeps transcripts in `<dir>/private-threads.sqlite`. It is
+Node.js IPC channel; it opens no port, runs one AI SDK `ToolLoopAgent` per turn with this computer's tools, and calls
+the model the desktop names for that turn: a provider with the person's own key, a Claude or ChatGPT plan through the
+desktop's local CLIProxyAPI, or Overlay's metered model relay with a short-lived token. It keeps transcripts in
+`<dir>/private-threads.sqlite`. It is
 not meant to be started by hand. See `internal/develop/private-threads.md` in the Overlay repository.

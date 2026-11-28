@@ -7,13 +7,14 @@ import { ProviderLogo } from '@overlay/ui/ai'
 import type { LocalModelProvider, LocalSetupImportResult, LocalSetupScan } from '@overlay/desktop-bridge'
 import { OverlayMark } from '@/components/brand/OverlayMark'
 import { useDesktopBridge } from '@/components/desktop/DesktopProvider'
-import { useLocalModelKeys } from '@/components/desktop/useLocalThreads'
+import { useLocalModelKeys, useLocalPlans } from '@/components/desktop/useLocalThreads'
 import { useThisComputer } from '@/components/desktop/useThisComputer'
 import { folderName } from '@/components/desktop/this-computer'
 import { useLiveWorkspaceBilling } from '@/hooks/use-billing'
 import { workspaceClient } from '@/features/workspaces/lib/workspace-client'
 import { overlayAppClient } from '@/shared/app/overlay-app-client'
 import { DEFAULT_MODEL_ID } from '@/shared/ai/gateway/model-types'
+import { PRIVATE_PLAN_NAMES, PRIVATE_PLAN_PROVIDERS, type PrivatePlanProvider } from '@/shared/agents/private-threads'
 import { AGENT_TOOL_PRESETS, toolIdsForEnabledGroups } from '@/shared/agents/tool-groups'
 import { currentLegalAcceptancePayload, LEGAL_DOCUMENTS } from '@/shared/legal/legal-documents'
 import type { OnboardingPrefill, OnboardingSessionResponse } from '@/shared/onboarding/session'
@@ -23,7 +24,7 @@ import { DESKTOP_ROLES, desktopSetupSteps, readDesktopSetup, writeDesktopSetup, 
 
 /**
  * A new account's first setup on Overlay Desktop (internal/plans/DESKTOP_ONBOARDING_PLAN.md): who the workspace is
- * for, about you, what other AI tools on this computer bring, model keys, this computer and a plan. It then starts
+ * for, about you, what other AI tools on this computer bring, plans and model keys, this computer and a plan. It then starts
  * the Overlay conversation with those answers, which carries on with agents, apps, teammates and a first task.
  */
 export function DesktopOnboarding({ userId, userName, personalWorkspaceId, onStarted }: {
@@ -302,6 +303,8 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
   const desktop = useDesktopBridge()
   const setupBridge = desktop?.info.capabilities.includes('localSetup') ? desktop.bridge : null
   const { keys, setKey } = useLocalModelKeys()
+  const { plans, signIn, cancelSignIn } = useLocalPlans()
+  const [signing, setSigning] = useState<PrivatePlanProvider | null>(null)
   const [scan, setScan] = useState<LocalSetupScan | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [adding, setAdding] = useState<LocalModelProvider | null>(null)
@@ -321,10 +324,16 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
     catch (failure) { setError(errorText(failure, 'That key didn’t work.')) }
     finally { setBusy(null) }
   }
+  const signInTo = async (provider: PrivatePlanProvider) => {
+    setSigning(provider); setError(null)
+    try { await signIn(provider) }
+    catch (failure) { const message = errorText(failure, ''); if (!/cancelled/i.test(message)) setError(message || 'Sign-in didn’t finish. Try again.') }
+    finally { setSigning(null) }
+  }
   const found = scan?.shellKeys ?? []
   const others = (Object.keys(PROVIDER_LABEL) as LocalModelProvider[]).filter((provider) => !found.some((key) => key.provider === provider))
   return <>
-    <Heading title="How private threads think" detail="Threads that stay on this computer call a model with your own key. Synced threads use Overlay’s models." />
+    <Heading title="How private threads think" detail="Threads that stay on this computer call a model with your own plan or key. Synced threads use Overlay’s models." />
     {found.length ? <>
       <Label>Found on this computer</Label>
       <List>{found.map((key) => <Row key={key.provider} icon={<ProviderLogo provider={key.provider} size={16} />} title={PROVIDER_LABEL[key.provider]}
@@ -346,18 +355,24 @@ function ModelsStep({ onBack, onNext }: { onBack(): void; onNext(): void }) {
           detail={has(provider) ? 'In your keychain' : provider === 'openrouter' ? 'Hundreds of models with one key' : undefined}
           end={has(provider) ? <Done>Added</Done> : <Button size="sm" variant="ghost" onClick={() => setAdding(provider)}><KeyRound size={14} />Add key</Button>} />)}
     </List>
-    {scan && (scan.subscriptions.claude || scan.subscriptions.chatgpt) ? <>
+    {plans?.available ? <>
       <Label>Use a plan you already pay for</Label>
-      <List>
-        {scan.subscriptions.claude ? <Row icon={<ProviderLogo provider="anthropic" size={16} />} title="Claude plan" detail="Signed in to Claude Code" end={<Soon />} /> : null}
-        {scan.subscriptions.chatgpt ? <Row icon={<ProviderLogo provider="openai" size={16} />} title="ChatGPT plan" detail="Signed in to Codex" end={<Soon />} /> : null}
-      </List>
+      <List>{PRIVATE_PLAN_PROVIDERS.map((provider) => {
+        const plan = plans[provider]
+        const name = PRIVATE_PLAN_NAMES[provider]
+        return <Row key={provider} icon={<ProviderLogo provider={provider === 'claude' ? 'anthropic' : 'openai'} size={16} />} title={`${name} plan`}
+          detail={plan.signedIn ? `Signed in${plan.account ? ` · ${plan.account}` : ''}`
+            : signing === provider ? 'Finish signing in in your browser'
+            : scan?.subscriptions[provider] ? `${provider === 'claude' ? 'Claude Code' : 'Codex'} uses it on this computer` : undefined}
+          end={plan.signedIn ? <Done>Signed in</Done>
+            : signing === provider ? <Button size="sm" variant="ghost" onClick={cancelSignIn}><Loader2 size={14} className="animate-spin" />Cancel</Button>
+            : <Button size="sm" variant="ghost" disabled={signing !== null || busy !== null} onClick={() => void signInTo(provider)}>Sign in</Button>} />
+      })}</List>
     </> : null}
     <ErrorLine error={error} />
     <Actions onBack={onBack} onSkip={onNext} next={onNext} />
   </>
 }
-const Soon = () => <span className="whitespace-nowrap rounded-full border border-(--border) px-2 py-0.5 text-[11px] text-(--muted)">Coming soon</span>
 
 function ComputerStep({ workspaceId, onBack, onNext }: { workspaceId: string; onBack(): void; onNext(): void }) {
   const computer = useThisComputer(workspaceId)
@@ -438,7 +453,7 @@ function PlanStep({ state, onBack, onFinish }: { state: DesktopSetupState; onBac
   return <>
     <Heading title="Pick a plan" detail={alreadyPaid ? 'This workspace already has a plan.' : team ? `${state.workspaceName.trim() || 'Your workspace'} is a team workspace, so it needs the paid plan` : 'Start free on this computer. Upgrade any time in Settings.'} />
     <div className="mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {card('free', 'Free', '$0', 'forever', ['Private threads on this computer', 'Your own model keys', 'Memory, notes, tasks and files up to 100 MB', '50 web searches a month'])}
+      {card('free', 'Free', '$0', 'forever', ['Private threads on this computer', 'Your own plans and model keys', 'Memory, notes, tasks and files up to 100 MB', '50 web searches a month'])}
       {card('paid', 'Overlay', '$8', '/ month', ['Everything in Free', '$8 of usage credit every month', 'Overlay’s models, synced threads and Cloud computer', 'Gmail, Calendar, Slack, Notion and more', 'Invite your team'])}
     </div>
     {paid ? <label className="mt-4 flex items-start gap-2 text-xs text-(--muted)">

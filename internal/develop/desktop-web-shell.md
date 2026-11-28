@@ -89,9 +89,13 @@ local-tools host from its `config.json` at launch once the session is verified; 
 the host. Unpackaged builds may set `OVERLAY_DESKTOP_DEV_HOST_PACKAGE` to a packed host tarball for QA; packaged
 builds always use the pin.
 Private threads (bridge capability `localThreads`, macOS only for now) run a thread's agent on this computer with
-the person's own model keys: the app starts the bundled host as `overlay-agent-host private` over Node.js IPC, keeps
-the keys in the keychain and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains a Model
-keys section. `internal/develop/private-threads.md` has the contract and rules.
+the person's own model keys, a Claude or ChatGPT plan signed in through the bundled CLIProxyAPI (`plan-proxy*.ts`,
+loopback only, tokens in the keychain), or Overlay's metered models in a paid workspace. The app starts the bundled
+host as `overlay-agent-host private` over Node.js IPC, keeps keys and plan sign-ins in the keychain, hands the host
+only what one run needs, and relays the reply stream as `localThreads.chunk` events. Settings → Desktop gains Plans
+and Model keys sections. CLIProxyAPI is pinned and checksum-verified by `scripts/build-agent-host-bundle.mjs`
+(`native-artifacts.json`, license in `third_party/licenses/CLIProxyAPI-LICENSE`) and packaged beside Node.js in
+`Resources/agent-host`, so electron-builder signs and notarizes it with the app; `verify-macos-artifact.mjs` checks it. `internal/develop/private-threads.md` has the contract and rules.
 First-run setup (bridge capability `localSetup`, macOS only for now) runs before the onboarding conversation for a
 new account: the server sets `desktopSetup` on `GET /api/v1/onboarding/session` when setup has not started and the
 person's only workspace is their own personal one. `DesktopOnboarding` (`src/app/_components/onboarding/desktop/`)

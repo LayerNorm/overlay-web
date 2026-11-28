@@ -1,7 +1,8 @@
 # Desktop onboarding: setting Overlay up on this computer
 
 Status: Phases 1–3 merged (PR 638) and live on overlay.works since 2026-11-27 (`434a46f`); the desktop side shipped in
-Overlay Desktop 0.6.0. Settings → Import and Phase 4 are not built. Not yet accepted in the released app by a real new account. Mockup: `internal/plans/mockups/desktop-onboarding.html`.
+Overlay Desktop 0.6.0. Settings → Import is not built. Phase 4's plans half (Claude and ChatGPT sign-in in step 4) is
+built in a draft PR (2026-11-27), not merged or released; its local MCP servers half is not started. Not yet accepted in the released app by a real new account. Mockup: `internal/plans/mockups/desktop-onboarding.html`.
 
 Related: `internal/plans/LOCAL_PRIVATE_THREADS_PLAN.md` (private threads, model keys, free tier),
 `internal/develop/private-threads.md`, `internal/develop/local-computer.md`,
@@ -63,8 +64,10 @@ same screen (the onboarding session only exists once the conversation starts).
      checked with the provider, then kept in the system keychain, the same way as in Settings →
      Model keys.
    - Otherwise the person can add a key, or use Overlay's models with a plan.
-   - *Signed in to Claude Code* and *Signed in to Codex* appear marked "Coming soon". They are
-     Phase 4 of the private threads plan.
+   - *Use a plan you already pay for*: Claude and ChatGPT, each with *Sign in* (the provider's page opens in the
+     browser; the sign-in stays in the keychain). A plan Claude Code or Codex already uses on this computer is pointed
+     out. Shown when this copy of Overlay can run plans (private threads plan, Phase 4; terms review waived by the
+     owner on 2026-11-27).
 5. **This computer.**
    - Connect it (the existing enrollment; the free tier allows one computer).
    - Choose folders: `~/Overlay Files` is always included, and more can be added with the system
@@ -134,7 +137,7 @@ person did not tick. Settings → Import (desktop only) runs the same scan again
 | 1: Gate and core screens | `desktopSetup` status, screens 1, 2 and 6, handoff to the conversation at `daily` | Released (web 2026-11-27, Desktop 0.6.0); not accepted |
 | 2: This computer and models | Screens 4 and 5 with existing enrollment and key storage; environment keys | Released (Desktop 0.6.0); not accepted |
 | 3: Bring your setup | Scanners, `localSetup` bridge, import of instructions, skills, subagents and remote MCP servers; Settings → Import | Released (Desktop 0.6.0) except Settings → Import, which is not built; not accepted |
-| 4: Local servers and subscriptions | Local (command) MCP servers in private threads through the Agent Host; Claude and ChatGPT plans (private threads Phase 4) | Not started |
+| 4: Local servers and subscriptions | Local (command) MCP servers in private threads through the Agent Host; Claude and ChatGPT plans (private threads Phase 4) | Plans: built in a draft PR (2026-11-27), not merged, released or accepted. Local MCP servers: not started |
 
 ## Acceptance
 

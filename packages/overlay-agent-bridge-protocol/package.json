@@ -1,6 +1,6 @@
 {
   "name": "@layernorm/overlay-agent-bridge-protocol",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Enrollment, signed host request and local tool contracts for the Overlay Agent Host.",
   "license": "AGPL-3.0-only",
   "repository": {

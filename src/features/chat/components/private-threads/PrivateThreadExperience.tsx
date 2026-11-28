@@ -16,7 +16,7 @@ import { buildAssistantVisualSequence } from '@overlay/chat-core'
 import type { LocalThread, WorkspaceAgentLike } from './private-thread-types'
 import { AgentCreature } from '@/components/orb/Creature'
 import { useOverlayCapabilities } from '@/components/providers/CapabilitiesProvider'
-import { useLocalModelKeys, useLocalThreadOwner, useLocalThreadsBridge, type LocalThreadOwner } from '@/components/desktop/useLocalThreads'
+import { useLocalModelKeys, useLocalPlans, useLocalThreadOwner, useLocalThreadsBridge, type LocalThreadOwner } from '@/components/desktop/useLocalThreads'
 import { useThisComputer } from '@/components/desktop/useThisComputer'
 import { folderName } from '@/components/desktop/this-computer'
 import { ChatComposer } from '../ChatComposer'
@@ -86,7 +86,8 @@ function PrivateThreadView({ bridge, owner, agent, initial, headerActions }: {
   const [thread, setThread] = useState(initial.thread)
   const threadId = thread.id
   const { keys } = useLocalModelKeys()
-  const model = usePrivateModel(bridge, keys, agent.modelId)
+  const { plans } = useLocalPlans()
+  const model = usePrivateModel(bridge, keys, plans, agent.modelId, owner.workspaceId)
   const resolvedModel = model.resolved
   const turnSettings = useMemo<PrivateTurnSettings | null>(() => resolvedModel ? {
     model: resolvedModel,
@@ -196,7 +197,7 @@ function PrivateThreadView({ bridge, owner, agent, initial, headerActions }: {
             </div>
           </div>
           {!model.loading && !model.resolved
-            ? <AddKeyNotice text={`${agent.name} uses ${model.modelName}. To run it on this computer, add an ${model.keyNames} key. Keys stay in this computer’s keychain.`} />
+            ? <AddKeyNotice text={`${agent.name} uses ${model.modelName}. ${model.notice}`} />
             : null}
           <ChatComposer
             mode="chat"
@@ -259,7 +260,7 @@ function AddKeyNotice({ text }: { text: string }) {
       <div role="note" className="mx-3 mb-1 flex items-center gap-3 rounded-xl border border-(--border) bg-(--surface-subtle) px-3 py-2 sm:mx-4">
         <KeyRound size={14} strokeWidth={1.75} className="shrink-0 text-(--muted)" />
         <p className="min-w-0 flex-1 text-xs leading-relaxed text-(--muted)">{text}</p>
-        <Button variant="ghost" size="xs" className="shrink-0 text-xs" onClick={() => router.push('/app/settings?section=desktop')}>Add a key</Button>
+        <Button variant="ghost" size="xs" className="shrink-0 text-xs" onClick={() => router.push('/app/settings?section=desktop')}>Set up</Button>
       </div>
     </div>
   )

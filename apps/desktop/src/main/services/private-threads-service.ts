@@ -6,10 +6,13 @@ import { join, resolve, sep } from 'node:path'
 import { app, session } from 'electron'
 import {
   localModelProviders,
+  localPlanProviders,
   type Events,
   type Input,
   type LocalModelKeys,
   type LocalModelProvider,
+  type LocalPlanProvider,
+  type LocalPlans,
   type Results
 } from '@overlay/desktop-bridge'
 import { emitDesktopEvent } from './desktop-events'
@@ -17,18 +20,23 @@ import { resolveEmbeddedHostRuntime } from './embedded-host-config'
 import { createLocalHelperEnvironment } from './security/local-helper-process'
 import { safeStorageService } from './security/safe-storage-service'
 import { ensureLocalComputerWorkFolder } from './local-computer'
+import { planProxyService } from './plan-proxy-service'
 import { getWebShellOrigin, WEB_SHELL_PARTITION } from './web-shell'
 
 /**
  * Private threads ("Cloud sync" off) run in the bundled Agent Host, started as
  * `overlay-agent-host private` with a Node.js IPC channel and no network port.
- * This process keeps the person's model keys in the system keychain and hands
- * one to the host only for the run that needs it. Transcripts stay in the
- * host's SQLite file under the app's data folder.
+ * This process keeps the person's model keys and plan sign-ins in the system
+ * keychain and hands the host only what the run that needs it uses: a key, the
+ * local plan proxy's address and secret, or a short-lived token for Overlay's
+ * metered models. Transcripts stay in the host's SQLite file under the app's
+ * data folder.
  */
 type Pending = { resolve: (value: unknown) => void; reject: (error: Error) => void }
+/** Model sources an Agent Host reports when it starts (0.8.0 and later); older hosts run keys only. */
+type ModelSource = 'key' | 'plan' | 'overlay'
 type HostMessage =
-  | { type: 'ready' }
+  | { type: 'ready'; modelSources?: ModelSource[] }
   | { type: 'response'; id: number; ok: true; result: unknown }
   | { type: 'response'; id: number; ok: false; error: string }
   | { type: 'event'; event: HostEvent }
@@ -40,9 +48,11 @@ type HostEvent =
 const KEY_PREFIX = 'private-model-key-'
 const START_TIMEOUT_MS = 15_000
 const OVERLAY_TOOLS_TIMEOUT_MS = 15_000
+const isPlan = (provider: string): provider is LocalPlanProvider => (localPlanProviders as readonly string[]).includes(provider)
 
 class PrivateThreadsService {
   private supported: boolean | null = null
+  private modelSources: ModelSource[] = ['key']
   private child: ChildProcess | null = null
   private ready: Promise<void> | null = null
   private nextId = 1
@@ -96,7 +106,11 @@ class PrivateThreadsService {
     this.ready = new Promise<void>((resolveReady, rejectReady) => {
       const timer = setTimeout(() => rejectReady(new Error('Private threads did not start in time.')), START_TIMEOUT_MS)
       child.on('message', (message: HostMessage) => {
-        if (message?.type === 'ready') { clearTimeout(timer); resolveReady() }
+        if (message?.type === 'ready') {
+          clearTimeout(timer)
+          this.modelSources = Array.isArray(message.modelSources) ? message.modelSources : ['key']
+          resolveReady()
+        }
         else this.receive(message)
       })
       child.once('exit', () => { clearTimeout(timer); rejectReady(new Error('Private threads stopped unexpectedly.')) })
@@ -169,16 +183,37 @@ class PrivateThreadsService {
   }
 
   async send(input: Input<'localThreads.send'>) {
-    const apiKey = readKey(input.model.provider)
-    if (!apiKey) throw new Error('Add a key for this model provider in Settings → Desktop first.')
     const { thread } = await this.get({ owner: input.owner, threadId: input.threadId })
+    const model = await this.turnModel(input.model, input.owner.workspaceId, thread.agentId)
     const roots = [thread.folder ?? ensureLocalComputerWorkFolder()]
     const overlay = await overlayToolsAccess(input.owner.workspaceId, thread.agentId)
     return await this.request<Results['localThreads.send']>({
       method: 'send', owner: input.owner, threadId: input.threadId, turnId: input.turnId,
-      messages: input.messages, model: { ...input.model, apiKey }, agent: input.agent,
+      messages: input.messages, model, agent: input.agent,
       roots, approvalMode: input.approvalMode, ...(overlay ? { overlay } : {})
     })
+  }
+
+  /** What the host needs to call the chosen model for this one turn; read here, never from the page. */
+  private async turnModel(model: Input<'localThreads.send'>['model'], workspaceId: string, agentId: string): Promise<Record<string, unknown>> {
+    const { provider, modelId } = model
+    if (provider === 'overlay') {
+      await this.requireSource('overlay')
+      return { provider, modelId, relay: await overlayModelAccess(workspaceId, agentId) }
+    }
+    if (isPlan(provider)) {
+      await this.requireSource('plan')
+      if (!planProxyService.signedIn(provider)) throw new Error(`Sign in to ${provider === 'claude' ? 'Claude' : 'ChatGPT'} in Settings → Desktop first.`)
+      return { provider, modelId, proxy: await planProxyService.access() }
+    }
+    const apiKey = readKey(provider)
+    if (!apiKey) throw new Error('Add a key for this model provider in Settings → Desktop first.')
+    return { provider, modelId, apiKey }
+  }
+
+  private async requireSource(source: ModelSource): Promise<void> {
+    await this.start()
+    if (!this.modelSources.includes(source)) throw new Error('Update Overlay to use this model in threads on this computer.')
   }
 
   stop(input: Input<'localThreads.stop'>) {
@@ -217,13 +252,42 @@ class PrivateThreadsService {
   }
 
   async models(input: Input<'localThreads.models'>): Promise<Results['localThreads.models']> {
-    const apiKey = readKey(input.provider)
+    const { provider } = input
+    if (isPlan(provider)) {
+      if (!planProxyService.signedIn(provider) || !(await this.plans()).available) return { models: [] }
+      return await this.request<Results['localThreads.models']>({ method: 'models', provider, proxy: await planProxyService.access() })
+    }
+    const apiKey = readKey(provider)
     if (!apiKey) return { models: [] }
-    return await this.request<Results['localThreads.models']>({ method: 'models', provider: input.provider, apiKey })
+    return await this.request<Results['localThreads.models']>({ method: 'models', provider, apiKey })
+  }
+
+  /** Plans need the bundled proxy and an Agent Host that can call them. */
+  async plans(): Promise<LocalPlans> {
+    let started = true
+    try { await this.start() } catch { started = false }
+    const available = started && planProxyService.bundled() && this.modelSources.includes('plan')
+    return planProxyService.status(available, started && this.modelSources.includes('overlay'))
+  }
+
+  async signIn(input: Input<'localThreads.signIn'>): Promise<LocalPlans> {
+    if (!(await this.plans()).available) throw new Error('Update Overlay to use your plan in threads on this computer.')
+    await planProxyService.signInTo(input.provider)
+    return await this.plans()
+  }
+
+  cancelSignIn(): void {
+    planProxyService.cancelSignIn()
+  }
+
+  async signOut(input: Input<'localThreads.signOut'>): Promise<LocalPlans> {
+    await planProxyService.signOut(input.provider)
+    return await this.plans()
   }
 
   /** Signing out or quitting stops private runs; their transcripts are kept up to the last step. */
   stopAll(): void {
+    planProxyService.stop()
     const child = this.child
     if (!child) return
     this.child = null
@@ -283,6 +347,32 @@ function folderAllowed(folder: string): boolean {
 }
 
 export const privateThreadsService = new PrivateThreadsService()
+
+/**
+ * Overlay's metered models for one turn (paid workspaces): a short-lived token for Overlay's model relay, asked for
+ * with this app's own signed-in session. The relay runs each call, charges the workspace and keeps nothing of it.
+ */
+async function overlayModelAccess(workspaceId: string, agentId: string): Promise<{ url: string; token: string }> {
+  const origin = getWebShellOrigin()
+  let response: Response
+  try {
+    response = await session.fromPartition(WEB_SHELL_PARTITION).fetch(`${origin}/api/v1/private-threads/model-access`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': `desktop:${randomUUID()}`, Referer: `${origin}/app` },
+      body: JSON.stringify({ workspaceId, agentId }),
+      redirect: 'error',
+      signal: AbortSignal.timeout(OVERLAY_TOOLS_TIMEOUT_MS)
+    })
+  } catch {
+    throw new Error('Couldn’t reach Overlay to use its models. Check your connection.')
+  }
+  const body = (await response.json().catch(() => ({}))) as { token?: unknown; error?: unknown }
+  if (!response.ok || typeof body.token !== 'string') {
+    throw new Error(typeof body.error === 'string' && body.error ? body.error : 'Couldn’t use Overlay’s models for this thread.')
+  }
+  // The token only ever goes to this app's own Overlay server.
+  return { url: `${origin}/api/private-threads/model`, token: body.token }
+}
 
 /**
  * The agent's Overlay tools for one turn: a short-lived token for Overlay's MCP server, asked for with this app's own
