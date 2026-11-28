@@ -147,6 +147,13 @@ them. Besides the canonical app mockup, this folder holds only:
   `automation-threads.html#/w/northwind/workspace/automations` (new automation) or
   `automation-threads.html#/w/northwind/workspace/automations?id=k17chatautolaunch000000000000000` (a thread with a
   failed run and one waiting for an answer). Delete it when the design ships or is rejected.
+- `free-first-task.html` (feature `free-first-task`): proposed onboarding that lets people see Overlay work before
+  paying. Two questions (name, what they need help with), then a first task that starts free with no card. Setup ends
+  in the Workspace Overlay chat, where the task runs and its result arrives; then Overlay asks to subscribe ($8/month,
+  production copy and consent) and offers Slack and Gmail. The real onboarding shell and conversation run against an
+  in-page fake of the onboarding API. Open `free-first-task.html` to walk the whole flow, or
+  `free-first-task.html?at=result#/w/northwind/workspace/agents?agent=agent_overlay&id=k17convwelcome000000000000000000`
+  to start at the subscription question. Delete it when the design ships or is rejected.
 - `note-renderer.html`: the approved note page, block handle, block menu and
   note card design that the notes editor implements. Delete it once the
   redesign is accepted in production.
