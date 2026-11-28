@@ -91,7 +91,8 @@ test('a server that fails to start is left out, named for the model, and its env
     ], { signal: new AbortController().signal, approvalMode: 'ask' })
     assert.deepEqual(Object.keys(turn.tools).sort(), ['Fixture__greet', 'Fixture__pid'])
     assert.match(turn.instructions, /could not start for this turn: .*Broken/)
-    assert.match(turn.instructions, /Missing \(\/no\/such\/command-overlay-test was not found/)
+    // Windows words a missing program differently; local MCP servers ship for macOS.
+    assert.match(turn.instructions, process.platform === 'win32' ? /Missing \(/ : /Missing \(\/no\/such\/command-overlay-test was not found/)
     assert.doesNotMatch(turn.instructions, /super-secret-value/)
     turn.release()
     assert.deepEqual(pool.running(), ['srv-1'])
