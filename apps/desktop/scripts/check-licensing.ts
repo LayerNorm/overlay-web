@@ -1,6 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// @ts-expect-error -- plain ESM helper shared with the repository's supply-chain checks
+import { installedManifest, productionPackages, readBunLock } from '../../../scripts/ci/bun-lock.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const readJson = (relative: string): Record<string, any> =>
@@ -33,15 +35,30 @@ const allowedLicenseIds = new Set([
   'Zlib'
 ])
 let audited = 0
-// The app ships its own dependencies and the Agent Host bundle's.
-const lockedPackages = ['package-lock.json', 'agent-host-bundle/package-lock.json'].flatMap((lockfile) =>
-  Object.entries<any>(readJson(lockfile).packages)
-)
-for (const [packagePath, metadata] of lockedPackages) {
+const check = (label: string, license: string) => {
+  audited += 1
+  if (!isAcceptable(license)) failures.push(`${label} has unreviewed runtime license "${license}"`)
+}
+// The app ships its production dependencies from the monorepo's bun.lock...
+const repositoryRoot = path.resolve(root, '../..')
+for (const [id, entry] of productionPackages(readBunLock(repositoryRoot), ['apps/desktop']) as Map<
+  string,
+  { name: string; version: string; optional: boolean }
+>) {
+  // Overlay's own Agent Host, AGPL like this app.
+  if (entry.name.startsWith('@layernorm/')) continue
+  const manifest = installedManifest(entry.name, entry.version, repositoryRoot)
+  if (!manifest) {
+    // Optional per-platform binaries for other systems are not installed here.
+    if (!entry.optional) failures.push(`${id} is a runtime dependency but is not installed`)
+    continue
+  }
+  check(id, stringifyLicense(manifest.license ?? manifest.licenses))
+}
+// ...and the Agent Host bundle, which has its own npm lockfile.
+for (const [packagePath, metadata] of Object.entries<any>(readJson('agent-host-bundle/package-lock.json').packages)) {
   if (
     !packagePath.startsWith('node_modules/') ||
-    packagePath.startsWith('node_modules/@overlay/') ||
-    // Overlay's own Agent Host, AGPL like this app.
     packagePath.startsWith('node_modules/@layernorm/') ||
     !metadata.version ||
     metadata.dev === true ||
@@ -49,9 +66,7 @@ for (const [packagePath, metadata] of lockedPackages) {
   ) {
     continue
   }
-  audited += 1
-  const license = stringifyLicense(metadata.license ?? metadata.licenses)
-  if (!isAcceptable(license)) failures.push(`${packagePath} has unreviewed runtime license "${license}"`)
+  check(`agent-host-bundle/${packagePath}`, stringifyLicense(metadata.license ?? metadata.licenses))
 }
 if (audited === 0) failures.push('no runtime dependencies were audited')
 
@@ -61,9 +76,12 @@ if (failures.length) {
 }
 console.log(`License check passed for ${audited} runtime dependency entries.`)
 
-function stringifyLicense(license: string | Array<string | { type?: string }> | undefined): string {
+function stringifyLicense(
+  license: string | { type?: string } | Array<string | { type?: string }> | undefined
+): string {
   if (!license) return 'MISSING'
   if (typeof license === 'string') return license
+  if (!Array.isArray(license)) return license.type || 'MISSING'
   return (
     license
       .map((entry) => (typeof entry === 'string' ? entry : entry.type))

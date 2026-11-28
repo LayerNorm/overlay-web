@@ -32,8 +32,8 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
-    "test": "npm run build && tsx --test src/*.test.ts",
+    "prepack": "bun run build",
+    "test": "bun run build && tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

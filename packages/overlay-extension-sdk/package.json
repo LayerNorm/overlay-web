@@ -17,7 +17,7 @@
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
-    "@overlay/app-core": "file:../overlay-app-core",
+    "@overlay/app-core": "workspace:*",
     "tsx": "^4.8.1",
     "typescript": "^5"
   }

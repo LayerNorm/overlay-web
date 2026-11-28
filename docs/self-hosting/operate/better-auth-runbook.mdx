@@ -90,15 +90,15 @@ Follow the provider recipe instead of manually guessing issuer metadata:
 Run migrations before starting production traffic:
 
 ```bash
-npm run better-auth:migrate
+bun run better-auth:migrate
 ```
 
 For local Docker Postgres:
 
 ```bash
-npm run better-auth:db:up
-npm run better-auth:migrate
-npm run dev:better-auth
+bun run better-auth:db:up
+bun run better-auth:migrate
+bun run dev:better-auth
 ```
 
 Re-run the migration command whenever Better Auth plugins or schema-affecting options change.
@@ -128,9 +128,9 @@ If the audience or JWKS URL is wrong, authenticated Convex-backed API calls shou
 After configuration:
 
 ```bash
-npm run check:config
-npm run check:providers
-npm run docs:health
+bun run check:config
+bun run check:providers
+bun run docs:health
 npx tsc --noEmit --pretty false --incremental false
 ```
 
@@ -149,5 +149,5 @@ Then run the Better Auth flow:
 Run the negative smoke with the Better Auth dev server running:
 
 ```bash
-npm run test:auth:better-auth-negative
+bun run test:auth:better-auth-negative
 ```

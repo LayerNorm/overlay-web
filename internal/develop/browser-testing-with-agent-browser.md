@@ -284,21 +284,21 @@ agent-browser close --all
   Always re-snapshot after clicks, navigation, or dynamic re-renders.
 - **Use `--session` for multi-account testing.** Each session is an isolated browser with
   its own cookies. Never mix accounts in the same session.
-- **Use the PR preview for final acceptance.** Run local smoke with `npm run dev`,
+- **Use the PR preview for final acceptance.** Run local smoke with `bun run dev`,
   then verify affected behavior on the current-head hosted preview.
 
 ## Work UI harness (no backend needed)
 
-`npm run test:work:ui` (`scripts/qa/work-ui-qa.mjs`) drives the real Work page, task panel, Board, Timeline and the
+`bun run test:work:ui` (`scripts/qa/work-ui-qa.mjs`) drives the real Work page, task panel, Board, Timeline and the
 Cmd+K entry in Chromium against an in-page fake of `/api/v1/work` and `/api/v1/scope`
 (`scripts/qa/work-ui/fake-work-api.ts`). It bundles the actual components with esbuild, compiles the app's Tailwind CSS,
 and swaps only what needs Next.js, a session or a workspace for small shims (`scripts/qa/work-ui/shims/`). Use it for fast
 UI iteration and regression checks; it does not replace the preview-URL pass, because the fake is not Convex.
 
 ```bash
-WORK_QA_CHROMIUM=/opt/pw-browsers/chromium npm run test:work:ui          # when Playwright's own browser is not installed
-WORK_QA_SHOTS=artifacts/work-qa npm run test:work:ui                      # also write light and dark screenshots
-WORK_QA_ONLY="board" WORK_QA_VERBOSE=1 npm run test:work:ui               # one group, with progress
+WORK_QA_CHROMIUM=/opt/pw-browsers/chromium bun run test:work:ui          # when Playwright's own browser is not installed
+WORK_QA_SHOTS=artifacts/work-qa bun run test:work:ui                      # also write light and dark screenshots
+WORK_QA_ONLY="board" WORK_QA_VERBOSE=1 bun run test:work:ui               # one group, with progress
 ```
 
 Query parameters pick the situation: `scope=`, `view=`, `filter=`, `task=`, `theme=dark`, `solo=1` (a workspace of one),

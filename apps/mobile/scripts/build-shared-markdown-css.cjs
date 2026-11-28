@@ -93,8 +93,9 @@ async function main() {
   const tailwindPath = path.join(webRoot, 'node_modules/@tailwindcss/postcss/dist/index.mjs')
   const tailwindPackage = JSON.parse(fs.readFileSync(path.join(webRoot, 'node_modules/@tailwindcss/postcss/package.json'), 'utf8'))
   const katexPackage = JSON.parse(fs.readFileSync(path.join(webRoot, 'node_modules/katex/package.json'), 'utf8'))
-  const webLock = JSON.parse(fs.readFileSync(path.join(webRoot, 'package-lock.json'), 'utf8'))
-  if (webLock.packages?.['node_modules/katex']?.version !== katexPackage.version) {
+  // bun.lock is JSON with trailing commas; a top-level entry is ["name@version", ...].
+  const webLock = JSON.parse(fs.readFileSync(path.join(webRoot, 'bun.lock'), 'utf8').replace(/,(\s*[}\]])/g, '$1'))
+  if (webLock.packages?.katex?.[0] !== `katex@${katexPackage.version}`) {
     throw new Error('Installed KaTeX version does not match the monorepo lockfile')
   }
   const postcss = require(postcssPath)

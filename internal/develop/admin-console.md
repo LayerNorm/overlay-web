@@ -30,11 +30,11 @@ the client redirects back through WorkOS.
 ## Local development
 
 ```bash
-npm run admin:dev        # next dev on :3100
-npm run admin:typecheck
-npm run admin:lint
-npm run admin:test
-npm run admin:build
+bun run admin:dev        # next dev on :3100
+bun run admin:typecheck
+bun run admin:lint
+bun run admin:test
+bun run admin:build
 ```
 
 Required env (same values the web app uses locally):

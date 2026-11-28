@@ -1,15 +1,15 @@
 import { spawnSync } from 'node:child_process'
 
 const commands = [
-  ['npm', ['run', 'check:config']],
-  ['npm', ['run', 'docs:health']],
-  ['npm', ['run', 'license:check']],
-  ['npm', ['run', 'check:shared-isomorphic']],
-  ['npm', ['run', 'check:module-boundaries']],
-  ['npm', ['run', 'check:providers']],
-  ['npm', ['run', 'test:phase6-routes']],
-  ['npm', ['run', 'typecheck']],
-  ['npm', ['run', 'build']],
+  ['bun', ['run', 'check:config']],
+  ['bun', ['run', 'docs:health']],
+  ['bun', ['run', 'license:check']],
+  ['bun', ['run', 'check:shared-isomorphic']],
+  ['bun', ['run', 'check:module-boundaries']],
+  ['bun', ['run', 'check:providers']],
+  ['bun', ['run', 'test:phase6-routes']],
+  ['bun', ['run', 'typecheck']],
+  ['bun', ['run', 'build']],
 ] as const
 
 for (const [command, args] of commands) {

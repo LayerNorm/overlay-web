@@ -50,8 +50,8 @@ export function desktopWebShellViolations(root) {
   if (!manifest) failures.push('desktop manifest is missing')
   else {
     const parsed = JSON.parse(manifest)
-    // One bridge contract: the desktop links the shared package instead of copying it.
-    if (parsed.dependencies?.['@overlay/desktop-bridge'] !== 'file:../../packages/overlay-desktop-bridge')
+    // One bridge contract: the desktop depends on the shared workspace package instead of copying it.
+    if (parsed.dependencies?.['@overlay/desktop-bridge'] !== 'workspace:*')
       failures.push('desktop must depend on the shared bridge package')
     for (const name of Object.keys({
       ...parsed.dependencies,

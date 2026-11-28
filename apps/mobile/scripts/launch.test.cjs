@@ -32,14 +32,17 @@ test('incoming workspace activation handles current, missing, valid and denied d
     /Denied/,
   )
 })
-test('EAS workspace preparation uses the monorepo root and installs it only once', () => {
-  const { prepareWorkspace, repositoryRoot } = require('./prepare-eas-workspace.cjs')
+test('EAS builds inside the monorepo and builds the agent packages after the root install', () => {
+  const { assertMonorepo, buildWorkspacePackages, repositoryRoot, AGENT_WORKSPACES } = require('./prepare-eas-workspace.cjs')
   assert.equal(repositoryRoot(root), path.resolve(root, '../..'))
+  assert.equal(assertMonorepo(root), path.resolve(root, '../..'))
   const calls = []
-  const installed = prepareWorkspace(root, (...args) => calls.push(args))
-  if (installed) assert.deepEqual(calls[0].slice(0, 2), ['npm', ['ci', '--no-audit', '--no-fund']])
-  else assert.deepEqual(calls, [])
-  assert.throws(() => prepareWorkspace(path.join(root, 'scripts')), /inside the Overlay monorepo/)
+  buildWorkspacePackages(root, (...args) => calls.push(args))
+  assert.deepEqual(
+    calls.map(([command, args]) => [command, args]),
+    AGENT_WORKSPACES.map((workspace) => ['bun', ['run', '--filter', workspace, 'build']]),
+  )
+  assert.throws(() => assertMonorepo(path.join(root, 'scripts')), /inside the Overlay monorepo/)
 })
 test('universal and custom links use existing native destinations', () => {
   for (const route of [

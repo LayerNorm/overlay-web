@@ -12,11 +12,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overlay/app-core": "file:../../packages/overlay-app-core",
-    "@overlay/authz-contracts": "file:../../packages/overlay-authz-contracts",
-    "@overlay/modules-react": "file:../../packages/overlay-modules-react",
-    "@overlay/tools-core": "file:../../packages/overlay-tools-core",
-    "@overlay/ui": "file:../../packages/overlay-ui",
+    "@overlay/app-core": "workspace:*",
+    "@overlay/authz-contracts": "workspace:*",
+    "@overlay/modules-react": "workspace:*",
+    "@overlay/tools-core": "workspace:*",
+    "@overlay/ui": "workspace:*",
     "@workos-inc/node": "^8.7.0",
     "lucide-react": "^0.575.0",
     "next": "16.4.1",

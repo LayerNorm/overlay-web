@@ -15,8 +15,8 @@ Use environment variables for secrets. Use JSON config for non-secret deployment
 
 ```bash
 cp docs/config/enterprise-private.example.json overlay.config.json
-OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
-npm run docs:health
+OVERLAY_CONFIG_FILE=overlay.config.json bun run check:config
+bun run docs:health
 ```
 
 For Docker-based enterprise source startup:
@@ -53,7 +53,7 @@ This uses the prebuilt `ghcr.io/layernorm/overlay-web` image by default while ke
 
 ## Example profiles
 
-Validated examples live under `docs/config`. `npm run docs:health` checks that each one parses.
+Validated examples live under `docs/config`. `bun run docs:health` checks that each one parses.
 
 | Profile | File | Use case |
 | --- | --- | --- |
@@ -120,8 +120,8 @@ S3_FORCE_PATH_STYLE=false
 Run these before booting or publishing config docs:
 
 ```bash
-OVERLAY_CONFIG_FILE=overlay.config.json npm run check:config
-npm run docs:health
+OVERLAY_CONFIG_FILE=overlay.config.json bun run check:config
+bun run docs:health
 ```
 
 The config parser rejects unsupported-but-declared providers with explicit boot errors. `convex` is the only accepted app-data provider; `postgres` and `pgvector` configs now fail validation with guidance toward `convex`. Private deployments still require `billing.provider="none"` and `capabilities.billing=false` until the billing parity phase. Values such as `e2b` or `self-hosted-playwright` still fail during config validation instead of silently falling back.

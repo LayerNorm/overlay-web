@@ -70,6 +70,6 @@ bumped.
   `convex/privateThreadAllowances.convex.test.ts` (the monthly counter).
 - Free tier on This computer: a workspace that never set up billing gets the free connected-computer limits (one
   computer) instead of failing (`bootstrap.ts` `policyLimits`).
-- Desktop: `npm run typecheck` and the contract tests. For a dev build with an unpublished host, bundle the host
+- Desktop: `bun run typecheck` and the contract tests. For a dev build with an unpublished host, bundle the host
   (`esbuild packages/overlay-agent-host/dist/cli.js --bundle --platform=node --format=esm --outfile=<dir>/cli.mjs`)
   and start Electron with `OVERLAY_DESKTOP_DEV_HOST_CLI=<dir>/cli.mjs`.

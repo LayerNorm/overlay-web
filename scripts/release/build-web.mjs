@@ -41,7 +41,7 @@ export function runHostedWebBuild(env, spawn = spawnSync) {
     { env: childEnv, stdio: 'inherit' })
     if (prepared.error) throw prepared.error
     if (prepared.status !== 0) return prepared.status ?? 1
-    const result = spawn('npm', ['run', 'build'], { env: childEnv, stdio: 'inherit' })
+    const result = spawn('bun', ['run', 'build'], { env: childEnv, stdio: 'inherit' })
     if (result.error) throw result.error
     return result.status ?? 1
   } finally {

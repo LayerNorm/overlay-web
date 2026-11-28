@@ -1,6 +1,6 @@
 # One repository for every Overlay surface
 
-Status: Phases 1 and 2 merged (2026-11-27); Phases 3–5 not started.
+Status: Phases 1 and 2 merged (2026-11-27); Phase 4 (one Bun install) in progress; Phases 3 and 5 not started.
 
 ## Goal
 
@@ -27,7 +27,7 @@ overlay/              ← this repository (GitHub LayerNorm/overlay, local folde
 | 1. Import | Bring desktop, mobile and Chrome into `apps/` with history; remove submodules; one bridge copy; per-app CI; desktop releases from this repo; web deploy skips app-only commits | Merged to main and deployed; web production verified |
 | 2. Mobile green | Fix the 20 node and 18 DOM transcript test failures against current web; widen the mobile workflow to `packages/**`, `src/shared/**`, `convex/**`; turn on server push | Merged to main; mobile suites green locally (node 282/282, transcript 96 + 55); server push on; device push QA pending (see Phase 2 record) |
 | 3. Chrome port | Port the side panel from the removed `MessageList` to the current `@overlay/chat-react` transcript; align React types; widen its workflow to the shared chat packages | Not started |
-| 4. One install | Make desktop, mobile and Chrome root npm workspaces with one lockfile; replace path imports with package imports | Not started |
+| 4. One install | Make desktop, mobile and Chrome workspaces of one root install with one lockfile; replace path imports with package imports. Done with Bun as the package manager (see Phase 4 record) | In progress: see Phase 4 record |
 | 5. Web in apps/web | Move the web app into `apps/web` (Vercel root directory, CI, docs) | Not started |
 
 ## Phase 1 record
@@ -98,3 +98,29 @@ behind a GitHub runner backlog when this was written).
 - Owner action: create the `mac-release` and `release-publish` environments in this repository
   and re-enter the Apple signing, notarization and `SENTRY_DSN` secrets before the next desktop
   release.
+
+## Phase 4 record
+
+- Bun 1.4.5 is the package manager and script runner for the whole repository; apps keep
+  their runtimes. One `bun.lock` replaces the root, desktop, mobile, Chrome and
+  `packages/overlay-llm-gateway` npm lockfiles; `apps/desktop/agent-host-bundle` keeps its
+  npm lockfile for the published Agent Host it ships.
+- The lockfile was migrated, not re-resolved: the four old lockfiles were merged into one
+  npm v3 workspace lockfile (apps' entries nested under `apps/<app>/node_modules`) and Bun
+  migrated it. A fresh resolve had moved hundreds of packages (for example
+  `@ai-sdk/anthropic` 4.0.22 → 4.0.107) and broke the AI SDK override. After migration web
+  differs from the old root lockfile only in the intended pins; desktop differs in 16
+  transitive packages and mobile in 21, mostly where root security pins now apply to them.
+- Isolated layout exposed undeclared imports (root `tsx`, `sharp`, `esbuild`,
+  `e2b`, `@ai-sdk/gateway`, Workflow packages, unified/remark, hast/mdast types; mobile React
+  Navigation and Babel; desktop `playwright`) and a real bug: mobile's DOM transcript
+  lazy-loaded Shiki 3 hoisted from Mintlify while `@overlay/ui` uses Shiki 4.
+- Paths that only worked because npm hoisted a package to the root now point at the
+  workspace that declares it: Tailwind's `@source` for `streamdown` in web
+  (`src/app/globals.css`) and mobile (`shared-markdown.input.css`) — left as is, both CSS
+  builds would have silently dropped those classes — and the Mintlify CLI in
+  `scripts/ci/run-mint.mjs`.
+- Bun has no nested or range-keyed overrides. Dropped nested pins were checked against the
+  new production audit; the ones still needed became direct pins.
+- Verification is recorded in the pull request.
+

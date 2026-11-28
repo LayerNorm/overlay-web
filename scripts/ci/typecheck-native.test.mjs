@@ -1,17 +1,19 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const BUN_TYPECHECK_VERSION = JSON.parse(readFileSync(path.join(sourceRoot, 'package.json'), 'utf8')).packageManager.replace(/^bun@/, '');
 test('compiler wrapper fails on absent routes and enforces Bun in CI while preserving the local fallback', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'overlay-compiler-test-'));
   try {
     mkdirSync(path.join(root, 'scripts/ci'), { recursive: true });
     copyFileSync(path.join(sourceRoot, 'scripts/ci/typecheck-native.mjs'), path.join(root, 'scripts/ci/typecheck-native.mjs'));
+    copyFileSync(path.join(sourceRoot, 'package.json'), path.join(root, 'package.json'));
     const run = ci => spawnSync(process.execPath, ['scripts/ci/typecheck-native.mjs'], {
       cwd: root, encoding: 'utf8', env: { ...process.env, CI: ci, OVERLAY_TYPECHECK_BUN_BINARY: path.join(root, 'missing-bun') },
     });
@@ -24,7 +26,7 @@ test('compiler wrapper fails on absent routes and enforces Bun in CI while prese
     writeFileSync(fallback, 'console.log("local-fallback-ran");');
     const required = run('true');
     assert.notEqual(required.status, 0);
-    assert.match(required.stderr, /requires Bun 1.4.4/);
+    assert.match(required.stderr, new RegExp(`requires Bun ${BUN_TYPECHECK_VERSION.replaceAll('.', '\\.')}`));
     assert.doesNotMatch(required.stdout, /local-fallback-ran/);
     const local = run('false');
     assert.equal(local.status, 0, local.stderr);
