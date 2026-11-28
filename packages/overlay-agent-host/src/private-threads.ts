@@ -79,6 +79,14 @@ export class PrivateThreadService {
     return await this.dispatch(request) as PrivateResults[M]
   }
 
+  /** A signed-in plan is listed through the local proxy; a provider with the person's key. */
+  private async listModels(request: Extract<ParsedPrivateRequest, { method: 'models' }>) {
+    if (request.provider === 'claude' || request.provider === 'chatgpt') {
+      return await (this.options.listPlanModels ?? listPlanModels)(request.provider, request.proxy!)
+    }
+    return await (this.options.listModels ?? listProviderModels)(request.provider, request.apiKey!)
+  }
+
   private async dispatch(request: ParsedPrivateRequest): Promise<PrivateResults[keyof PrivateResults]> {
     const { store } = this.options
     switch (request.method) {
@@ -127,12 +135,8 @@ export class PrivateThreadService {
         if (deleted) this.options.emit({ kind: 'threads', owner: request.owner })
         return { deleted }
       }
-      case 'models': {
-        if (request.provider === 'claude' || request.provider === 'chatgpt') {
-          return { models: await (this.options.listPlanModels ?? listPlanModels)(request.provider, request.proxy!) }
-        }
-        return { models: await (this.options.listModels ?? listProviderModels)(request.provider, request.apiKey!) }
-      }
+      case 'models':
+        return { models: await this.listModels(request) }
       case 'mcpCheck':
         return await this.localMcp.check(request.server)
       case 'mcpStop':
