@@ -57,6 +57,8 @@
 .sl .btn:hover .go { transform: translateX(2px); }
 
 /* Nav */
+.sl .skip { position: absolute; left: 16px; top: -64px; z-index: 30; padding: 8px 14px; border-radius: 8px; background: var(--sl-btn); color: var(--sl-btn-text); font-size: 13px; font-weight: 500; }
+.sl .skip:focus { top: 12px; }
 .sl .nav { position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--sl-bg) 86%, transparent); backdrop-filter: saturate(1.4) blur(12px); -webkit-backdrop-filter: saturate(1.4) blur(12px); border-bottom: 1px solid var(--sl-line); }
 .sl .nav-in { max-width: calc(var(--sl-w) + 2px); margin: 0 auto; height: 60px; display: flex; align-items: center; gap: 28px; padding: 0 24px; }
 .sl .nav-in > a:first-child { font-size: 22px; display: inline-flex; }

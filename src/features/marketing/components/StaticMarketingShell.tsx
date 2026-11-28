@@ -18,6 +18,7 @@ export function StaticMarketingShell({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth()
   return (
     <div className="sl">
+      <a className="skip" href="#main">Skip to content</a>
       <LandingNav appHref={getMarketingAppHref(isAuthenticated)} />
       <div className="frame">
         {children}

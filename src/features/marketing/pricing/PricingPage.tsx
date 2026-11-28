@@ -18,7 +18,7 @@ export function PricingPage({ billingEnabled }: { billingEnabled: boolean }) {
   return (
     <StaticMarketingShell>
       {billingEnabled ? (
-        <main>
+        <main id="main">
           <PricingHero appHref={appHref} />
           <div className={s.root}>
             <PricingKinds />
@@ -29,7 +29,7 @@ export function PricingPage({ billingEnabled }: { billingEnabled: boolean }) {
           <PricingEnd appHref={appHref} />
         </main>
       ) : (
-        <main>
+        <main id="main">
           <MarketingPageHead
             label="Pricing"
             title="Billing unavailable"

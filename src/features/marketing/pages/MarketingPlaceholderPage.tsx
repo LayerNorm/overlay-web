@@ -19,7 +19,7 @@ export function MarketingPlaceholderPage({
 }) {
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         <MarketingPageHead label="Coming soon" title={title} lead={description} tall>
           <p className="meta-line">Nothing here yet. This page is on its way.</p>
           <div className="actions">

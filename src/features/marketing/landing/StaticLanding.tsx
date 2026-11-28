@@ -38,32 +38,34 @@ export function StaticLanding() {
   )
   return (
     <StaticMarketingShell>
-      <section className="hero">
-        <a className={`backed ${lusitana.variable}`} href="https://verdictcap.com" target="_blank" rel="noopener noreferrer">Backed by <span>verdict.</span></a>
-        <LandingHeadline />
-        <p className="lead">Create, manage and deploy swarms of AI coworkers to solve your hardest problems.</p>
-        <div className="actions">
-          <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
-          <AddToSlack />
-        </div>
-        <div className="team" aria-label="Overlay and its team of agents">
-          {TEAM.slice(0, 3).map(mate)}
-          <div className="mate lead-mate"><LandingAgent id="overlay" size={72} /><span>Overlay<br /><span className="sub">Chief of Staff</span></span></div>
-          {TEAM.slice(3).map(mate)}
-        </div>
-        <LandingAppPreview className="hero-app" label="Clickable preview of the Overlay app" />
-      </section>
-      <SuperpowersSection />
-      <ChiefSection />
-      <OrgChartSection />
-      <MultiplayerSection />
-      <ScopesSection />
-      <SelfDrivingSection />
-      <CloudSection />
-      <SlackSection />
-      <ControlSection />
-      <FinalCtaSection appHref={appHref} />
-      <LandingFaq />
+      <main id="main">
+        <section className="hero">
+          <a className={`backed ${lusitana.variable}`} href="https://verdictcap.com" target="_blank" rel="noopener noreferrer">Backed by <span>verdict.</span></a>
+          <LandingHeadline />
+          <p className="lead">Create, manage and deploy swarms of AI coworkers to solve your hardest problems.</p>
+          <div className="actions">
+            <Link className="btn primary" href={appHref}>Get started <ArrowRight className="i go" /></Link>
+            <AddToSlack />
+          </div>
+          <div className="team" aria-label="Overlay and its team of agents">
+            {TEAM.slice(0, 3).map(mate)}
+            <div className="mate lead-mate"><LandingAgent id="overlay" size={72} /><span>Overlay<br /><span className="sub">Chief of Staff</span></span></div>
+            {TEAM.slice(3).map(mate)}
+          </div>
+          <LandingAppPreview className="hero-app" label="Clickable preview of the Overlay app" />
+        </section>
+        <SuperpowersSection />
+        <ChiefSection />
+        <OrgChartSection />
+        <MultiplayerSection />
+        <ScopesSection />
+        <SelfDrivingSection />
+        <CloudSection />
+        <SlackSection />
+        <ControlSection />
+        <FinalCtaSection appHref={appHref} />
+        <LandingFaq />
+      </main>
     </StaticMarketingShell>
   )
 }

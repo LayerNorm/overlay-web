@@ -32,7 +32,7 @@ export default function ManifestoPage() {
 
   return (
     <StaticMarketingShell>
-      <main>
+      <main id="main">
         <MarketingPageHead
           label="Manifesto"
           title="AI should amplify human potential, not replace it."
