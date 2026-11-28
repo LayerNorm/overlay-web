@@ -7,14 +7,14 @@ The web app is a standard Next.js app. Run it with Node.js anywhere that can rea
 
 ## Build and start
 
-You need Node.js 22 or newer and npm 11 or newer.
+You need Node.js 22 or newer and Bun 1.4.5 or newer, which installs packages and runs the build scripts.
 
 ```bash
 git clone https://github.com/LayerNorm/overlay.git
 cd overlay
-npm ci
-npm run build
-OVERLAY_CONFIG_FILE=overlay.config.json npm run start
+bun install --frozen-lockfile
+bun run build
+OVERLAY_CONFIG_FILE=overlay.config.json bun run start
 ```
 
 Set at least `NEXT_PUBLIC_APP_URL`, `NEXT_PUBLIC_CONVEX_URL`, `INTERNAL_API_SECRET`, `INTERNAL_SERVICE_AUTH_SECRET` and the session secrets in the process environment. See [Environment variables](/self-hosting/configure/environment) for the full list. Keep secrets in your platform's secret store and the deployment's shape in `overlay.config.json`.
@@ -56,7 +56,7 @@ For SSO with sign-in pages managed by Overlay, prefer [Better Auth](/self-hostin
 ## Check it works
 
 ```bash
-npm run check:config
+bun run check:config
 ```
 
 Then, with the app running:

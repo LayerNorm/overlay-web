@@ -74,7 +74,7 @@ Prorated, discounted, partial, multi-line, unknown-price, stale, trialing, or un
 - Existing paid proof is populated without changing prior spent/reserved/top-up balances. Duplicate and out-of-order webhooks cannot duplicate credit or revive a canceled subscription.
 - Inspect mobile and dark-mode onboarding, billing recovery navigation, retired model selection, and actual first-task completion in the current isolated preview.
 
-Focused local checks: `npm run test:billing`, changed billing/onboarding/server tests through `tsx --test`, affected Convex tests through `npx vitest run --config vitest.config.mts`, targeted ESLint, owner-funded/shared-isomorphic boundary checks, and repository typecheck. Unit fixtures do not replace hosted checkout, provider, or migration acceptance.
+Focused local checks: `bun run test:billing`, changed billing/onboarding/server tests through `tsx --test`, affected Convex tests through `npx vitest run --config vitest.config.mts`, targeted ESLint, owner-funded/shared-isomorphic boundary checks, and repository typecheck. Unit fixtures do not replace hosted checkout, provider, or migration acceptance.
 
 ## Incident response
 

@@ -35,7 +35,7 @@ The local watcher remains a foreground-only fallback if registration is unavaila
 
 ## Checks and isolated acceptance
 
-- `npm run check`
+- `bun run check`
 - `node --test scripts/phase*.test.cjs scripts/push.test.cjs`
 - Targeted ESLint, Android and iOS `expo export --source-maps --no-bytecode`.
 - Inspect source maps for backend/alias/fixture modules and runtime `@/` imports.

@@ -55,7 +55,7 @@ One active task owns one descriptive branch and worktree. Preserve unrelated
 canonical edits. Keep canonical `main` clean for production. Do not share feature
 branches or use the canonical checkout as implementation scratch space.
 
-Use `npm run dev` for local web work with an engineer's own dev backend.
+Use `bun run dev` for local web work with an engineer's own dev backend.
 Do not deploy shared dev or production Convex from a feature worktree.
 Hosted PR builds provision a separate backend and seed synthetic data. Shared
 Preview settings are inherited; agents do not copy production credentials or

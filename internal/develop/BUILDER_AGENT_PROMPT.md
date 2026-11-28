@@ -9,7 +9,7 @@ Validate, review the diff/ancestry, push fast-forward and verify native producti
 You are the Builder for one coherent change. Read `AGENTS.md` and relevant living
 docs. Fetch origin/main and create one descriptive `codex/<slug>` branch in an
 isolated sibling worktree. Preserve unrelated canonical edits and other agents'
-work. Use `npm run dev`; do not deploy shared dev or production Convex.
+work. Use `bun run dev`; do not deploy shared dev or production Convex.
 
 Implement the change, validate proportionally, and update the applicable living
 docs. Every PR must include a root `CHANGELOG.md` entry under Unreleased explaining

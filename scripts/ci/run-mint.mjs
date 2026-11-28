@@ -1,11 +1,16 @@
 #!/usr/bin/env node
+import { realpathSync } from 'node:fs'
 import { access } from 'node:fs/promises'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
+import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '../..')
-const mintCli = path.join(root, 'node_modules/@mintlify/cli/bin/start.js')
+// The root depends on `mintlify`, which installs its own @mintlify/cli beside it
+// (Bun's isolated store: node_modules/.bun/mintlify@…/node_modules/{mintlify,@mintlify/cli}).
+const mintlifyDir = realpathSync(path.dirname(createRequire(path.join(root, 'package.json')).resolve('mintlify/package.json')))
+const mintCli = path.join(mintlifyDir, '..', '@mintlify', 'cli', 'bin', 'start.js')
 const jsYamlCompat = path.join(root, 'scripts/ci/mint-js-yaml-compat.mjs')
 const args = process.argv.slice(2)
 

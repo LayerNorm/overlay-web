@@ -22,7 +22,7 @@ Both are off for normal users.
 
 ## Running it
 
-1. Build and start production: `npm run build && npm run start` (or use an isolated exact-head PR Preview origin). Independently verify its deployed SHA before setting `PERF_TARGET_REVISION`; the runner records an expectation, not a deployment attestation. `revision` identifies the harness checkout.
+1. Build and start production: `bun run build && bun run start` (or use an isolated exact-head PR Preview origin). Independently verify its deployed SHA before setting `PERF_TARGET_REVISION`; the runner records an expectation, not a deployment attestation. `revision` identifies the harness checkout.
 2. Save a freshly authenticated storage state for a QA account, then `chmod 600` it. Never use a personal account with real data. Authentication state is not a timeless fixture: replaying an older snapshot can repeatedly reuse an expired access token and rotated refresh credential. Capture it immediately before a series and verify native Convex authentication; do not count a workspace boot gate as readiness. Keep expired-session recovery tests separate from valid-session timings.
 3. Prepare fixtures in that account:
    - Two agent threads (A and B) visible in the sidebar, each with a unique sentinel line of text. Thread B should be long (500+ exchanges) to show transcript cost.
@@ -42,7 +42,7 @@ PERF_THREAD_B="Perf QA thread B" PERF_THREAD_B_SENTINEL="perf-sentinel-b" \
 PERF_STREAM_PATH="/app/chat?id=..." \
 PERF_ALLOW_SEND=1 PERF_PROMPT="<approved synthetic prompt>" \
 PERF_DM_PATH="/app/chat?..." \
-npm run perf:baseline
+bun run perf:baseline
 ```
 
 Optional: `PERF_SCENARIOS=cold-start,thread-switch`, `PERF_RUNS=5` (default), `PERF_THROTTLE=fast-4g-cpu4x` (default, Chrome Fast 4G plus 4x CPU slowdown) or `none`, `PERF_OUT_DIR=.perf`.
@@ -87,8 +87,8 @@ Results go to `.perf/perf-baseline-<timestamp>.{json,md}` (git-ignored). Paste t
 ## Bundle baseline
 
 ```sh
-npm run analyze        # existing: analyzer build + /app/chat budget check
-npm run perf:bundle    # initial JS for /app/chat, /app/files, /app/agents, /app/notes
+bun run analyze        # existing: analyzer build + /app/chat budget check
+bun run perf:bundle    # initial JS for /app/chat, /app/files, /app/agents, /app/notes
 ```
 
 For a local compilation without service credentials, use the same non-production fixture configuration as the repository's production-compilation CI job:
@@ -97,7 +97,7 @@ For a local compilation without service credentials, use the same non-production
 OVERLAY_DEPLOYMENT_ENV=test \
 NEXT_PUBLIC_CONVEX_URL=https://fixture.convex.cloud \
 INTERNAL_API_SECRET=test-internal-secret \
-NODE_OPTIONS=--max-old-space-size=12288 npm run analyze
+NODE_OPTIONS=--max-old-space-size=12288 bun run analyze
 ```
 
 This produces bundle artifacts, not an authenticated app for browser measurements. The 12 GiB heap completed the analyzer in the QA VM; 4 and 6 GiB heaps failed. Use sufficient machine memory rather than removing analysis or raising budgets. A successful compilation followed by a failed budget check is not a passing budget. Keep the emitted analyzer and entrypoint files together with the exact source revision and configuration used.

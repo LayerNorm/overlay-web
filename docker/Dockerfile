@@ -1,11 +1,21 @@
+FROM oven/bun:1.4.5 AS bun
+
 FROM node:22-bookworm AS deps
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
-COPY package.json package-lock.json ./
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
+COPY package.json bun.lock bunfig.toml ./
 COPY packages ./packages
-RUN npm ci
+# bun.lock covers every workspace; their manifests must be present to install from it.
+COPY apps/admin/package.json ./apps/admin/
+COPY apps/chrome/package.json ./apps/chrome/
+COPY apps/chrome/packages ./apps/chrome/packages
+COPY apps/desktop/package.json ./apps/desktop/
+COPY apps/mobile/package.json ./apps/mobile/
+# Only the web app and the workspace packages it uses.
+RUN bun install --frozen-lockfile --filter getoverlay-landing
 
 FROM node:22-bookworm AS builder
 WORKDIR /app
@@ -13,10 +23,11 @@ WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_MODE=standalone
 
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/packages ./packages
 COPY . .
-RUN npm run build
+RUN bun run build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /app

@@ -6,7 +6,7 @@
 # Typechecking keeps tsconfig context, generates current routes, and runs the
 # existing boundary checks. Documentation-only pushes skip typechecking.
 #
-# Installed by `npm run hooks:install` (also run automatically by `npm install`),
+# Installed by `bun run hooks:install` (also run automatically by `bun install`),
 # which points core.hooksPath at .githooks so the hook is shared and reviewed
 # rather than living untracked in each clone's .git/hooks.
 #

@@ -25,7 +25,6 @@ import type {
   WorkspaceShareResourceType,
   WorkspaceShareTargetType,
   WorkspaceSharingPolicy,
-  WorkspaceSummary,
 } from '@overlay/workspace-contracts'
 import { appJson, appRequest } from './appApi'
 import { mobileOverlayAppClient } from './overlayClient'
@@ -148,13 +147,8 @@ export async function setTeamMembership(
 }
 
 // ---------------------------------------------------------------------------
-// Lifecycle + creation
+// Lifecycle
 // ---------------------------------------------------------------------------
-
-export async function createWorkspace(name: string): Promise<WorkspaceSummary> {
-  const { workspace } = await mobileOverlayAppClient.workspaces.create({ name })
-  return workspace
-}
 
 export async function archiveWorkspace(workspaceId: string): Promise<void> {
   await mobileOverlayAppClient.workspaces.archive(workspaceId)

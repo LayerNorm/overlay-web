@@ -279,7 +279,7 @@ risks. Each one maps to a specific guideline.
 | # | Item | Where | Why |
 |---|---|---|---|
 | A | **Fill in demo account credentials** | `review-notes.md` and ASC review notes | Without these, automatic rejection under 2.1 / 4.2. |
-| B | ~~Build the web "Delete account" flow~~ — **DONE** | `src/components/account/DeleteAccountSection.tsx` + `src/app/api/account/delete/route.ts` + `convex/users.ts → deleteUserAccountByServer` | The web account page now auto-opens a typed-confirmation modal whenever it is loaded with `?delete=1`. The API route cancels Stripe, wipes Convex rows, purges R2 blobs, deletes the WorkOS user, and clears the session cookie. Run `npm run convex:push:all` after pulling so the new Convex mutation is deployed. |
+| B | ~~Build the web "Delete account" flow~~ — **DONE** | `src/components/account/DeleteAccountSection.tsx` + `src/app/api/account/delete/route.ts` + `convex/users.ts → deleteUserAccountByServer` | The web account page now auto-opens a typed-confirmation modal whenever it is loaded with `?delete=1`. The API route cancels Stripe, wipes Convex rows, purges R2 blobs, deletes the WorkOS user, and clears the session cookie. Run `bun run convex:push:all` after pulling so the new Convex mutation is deployed. |
 | C | **Verify the demo account can use the free tier** end-to-end | TestFlight with reviewer creds | Reviewer will sign in fresh on a clean device. |
 | D | **Take 6.9" iPhone screenshots** | App Store Connect | Apple requires at least one device size. |
 | E | **Bump build number** before re-uploading | EAS build | `autoIncrement: true` will handle this if you build via EAS. |

@@ -109,7 +109,7 @@ async function paymentFixture(t: TestContext, summary: WorkspaceBillingSummaryRe
   Object.defineProperty(globalThis, 'IS_REACT_ACT_ENVIRONMENT', { configurable: true, value: true })
   let prepared = 0, started = 0, opened = 0
   const render = (summary: WorkspaceBillingSummaryResponse | null | undefined) => <OnboardingPayment workspaceId="team-a" workspaceName="Acme" personal={false} billingContactName={billingContactName} summary={summary} title="Review the launch plan" disabled={false}
-    onPrepare={async () => { prepared++ }} onStart={async () => { started++ }} onEdit={() => {}} onOpenWork={async () => { opened++ }} />
+    onPrepare={async () => { prepared++ }} onStart={async () => { started++ }} onEdit={() => {}} onFinishSetup={async () => { opened++ }} />
   let renderer!: ReturnType<typeof create>
   await act(async () => { renderer = create(render(summary)) })
   t.after(async () => {
@@ -228,13 +228,13 @@ test('request confirmation survives draft editing and is scoped to its workspace
   assert.doesNotMatch(JSON.stringify(renderer.toJSON()), /Request sent|Priya has been asked/)
 })
 
-test('request failure keeps the request retryable and Open Work never starts the draft', async t => {
+test('request failure keeps the request retryable and Finish setup never starts the draft', async t => {
   const f = await paymentFixture(t, billing('subscription_required'), null)
   t.mock.method(globalThis, 'fetch', async () => Response.json({ error: 'Request unavailable' }, { status: 500 }))
   await f.click('Ask an admin to subscribe')
   assert.match(f.text(), /Request unavailable/)
   assert.equal(f.button('Ask an admin to subscribe')?.props.disabled, false)
-  await f.click('Open Work')
+  await f.click('Finish setup')
   assert.equal(f.opened, 1)
   assert.equal(f.started, 0)
 })
@@ -244,7 +244,7 @@ test('free admin keeps the offer and consent-gated Subscribe, without member req
   assert.match(f.text(), /\$8/)
   assert.equal(f.button('Subscribe')?.props.disabled, true)
   assert.equal(f.button('Ask Priya to subscribe'), undefined)
-  assert.equal(f.button('Open Work'), undefined)
+  assert.equal(f.button('Finish setup'), undefined)
 })
 
 test('non-managers with exhausted or suspended billing see contact guidance, not a subscription request', async t => {

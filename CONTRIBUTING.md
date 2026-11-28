@@ -4,7 +4,7 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 
 ## Before You Start
 
-- Use Node.js 22 or newer and npm 11.11.0.
+- Use Node.js 22 or newer and Bun 1.4.5 (`packageManager` in `package.json`). Bun installs packages and runs scripts; the apps still run on Node.js.
 - Read the relevant guide under `internal/develop/` before changing an architectural area.
 - Follow `internal/develop/agentic-development.md` for worktrees, branch ownership, pull requests, commit history, and integration.
 - Use [`BUILDER_AGENT_PROMPT.md`](internal/develop/BUILDER_AGENT_PROMPT.md) when assigning implementation work and [`INTEGRATION_AGENT_PROMPT.md`](internal/develop/INTEGRATION_AGENT_PROMPT.md) when assigning review, staging QA, and promotion.
@@ -14,9 +14,9 @@ Thank you for helping improve Overlay. Small, focused pull requests with clear t
 ## Development
 
 ```bash
-npm ci --ignore-scripts
+bun install --frozen-lockfile --ignore-scripts
 cp .env.example .env.local
-npm run dev
+bun run dev
 ```
 
 Use placeholders for local secrets. Feature worktrees use personal dev backends; hosted PR builds deploy only their isolated preview backend. Only clean canonical main may deploy customer production Convex after matching production web is live. See `internal/develop/worktree-staging-qa.md`.
@@ -26,7 +26,7 @@ Use placeholders for local secrets. Feature worktrees use personal dev backends;
 1. Create a focused branch from the latest `main`.
 2. Open a draft Builder PR against main and verify its current-head isolated preview.
 3. Update the relevant living documentation in the same pull request.
-4. Run the smallest checks that cover the change, plus `npm run typecheck` for cross-contract changes.
+4. Run the smallest checks that cover the change, plus `bun run typecheck` for cross-contract changes.
 5. Explain user-visible behavior, security or billing impact, and rollback considerations.
 6. Hand the ready PR and current-head evidence to Integration for review and merge queue entry. Main changes automatically deploy to Production through Vercel Git. Verify the live SHA and affected behavior; synchronize customer Convex from clean canonical main only when backend changes require it, after matching web is live. Sensitive changes use expanded QA on the isolated PR preview.
 
@@ -35,17 +35,17 @@ Meaningful, independently valid commits are merged with a merge commit so their 
 The main release gate is the `Security Checks` workflow. Useful local checks include:
 
 ```bash
-npm run lint
-npm run check:web-complexity
-npm run typecheck
-npm run test:release-safety
-npm run check:tenant-boundaries
-npm run security:audit
+bun run lint
+bun run check:web-complexity
+bun run typecheck
+bun run test:release-safety
+bun run check:tenant-boundaries
+bun run security:audit
 ```
 
 ## Licensing
 
-All first-party material stored directly in this repository is `AGPL-3.0-only`. Run `npm run license:check` when dependencies or package boundaries change. See `LICENSE`, `docs/self-hosting/licensing/license.mdx`, and `NOTICE.md`.
+All first-party material stored directly in this repository is `AGPL-3.0-only`. Run `bun run license:check` when dependencies or package boundaries change. See `LICENSE`, `docs/self-hosting/licensing/license.mdx`, and `NOTICE.md`.
 
 LayerNorm uses a Contributor License Agreement because accepted contributions may also be distributed under paid commercial licenses. The draft is in `CLA.md`. Outside contributors must sign by commenting `I have read the CLA Document and I hereby sign the CLA` on the pull request; the `CLA Signatures` workflow records identity, CLA version, timestamp, repository, and pull request. A checkbox is not a signature. **Do not merge outside contributions until that check is green.** The CLA text is still a draft until counsel finalizes governing-law and entity-signing terms; founder commits from `DevelopedByDev` are allowlisted.
 

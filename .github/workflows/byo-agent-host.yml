@@ -37,23 +37,21 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # actions/checkout v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # actions/setup-node v7.1.0
+      - uses: ./.github/actions/ci-dependencies
         with:
           node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run test:agent-bridge-protocol
-      - run: npm --prefix packages/overlay-agent-bridge-protocol run typecheck
-      - run: npm run test:agent-host
-      - run: npm --prefix packages/overlay-agent-host run typecheck
+      - run: bun run test:agent-bridge-protocol
+      - run: bun run --cwd packages/overlay-agent-bridge-protocol typecheck
+      - run: bun run test:agent-host
+      - run: bun run --cwd packages/overlay-agent-host typecheck
       - if: runner.os == 'Linux'
-        run: npm run verify:agent-host-release
+        run: bun run verify:agent-host-release
       - if: runner.os == 'Linux'
-        run: npm run pack:agent-host-release
+        run: bun run pack:agent-host-release
       - name: Pack isolated acceptance candidate
         if: runner.os == 'Linux' && inputs.candidate_artifacts == true
         run: |
-          npm run smoke:agent-host-release
+          bun run smoke:agent-host-release
           mkdir -p artifacts/agent-host-candidate
           npm pack --workspace=@layernorm/overlay-agent-bridge-protocol --pack-destination artifacts/agent-host-candidate
           npm pack --workspace=@layernorm/overlay-agent-host --pack-destination artifacts/agent-host-candidate

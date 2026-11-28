@@ -31,10 +31,14 @@ jobs:
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: npm
+          package-manager-cache: false
+      # npm publishes (trusted publishing with provenance); Bun installs the workspace.
       - run: npm install --global npm@11.11.0
-      - run: npm ci
-      - run: npm run check:local-computer:release
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version-file: package.json
+      - run: bun install --frozen-lockfile
+      - run: bun run check:local-computer:release
       - name: Verify requested version
         env:
           REQUESTED_VERSION: ${{ inputs.version }}

@@ -53,7 +53,7 @@ If a docs subdomain is pointed directly at Mintlify instead, do not add it to th
 Before deployment:
 
 ```bash
-npm run docs:check
+bun run docs:check
 ```
 
 After deployment:

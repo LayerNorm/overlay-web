@@ -182,8 +182,10 @@ test('offline CSS verification rejects remote imports and missing local targets'
   )
 })
 
-test('Metro resolves the pinned Shiki lazy graph from the shared workspace', () => {
+test('Metro resolves the pinned Shiki lazy graph from the packages mobile declares', () => {
   const workspaceRoot = path.resolve(projectRoot, '../..')
+  // The DOM bundle's ./node_modules/... lazy chunks resolve from the app's own node_modules.
+  const lazyRoot = projectRoot
   const requests = [
     ['./node_modules/shiki/dist/core', 'shiki/dist/core.mjs'],
     ['./node_modules/shiki/dist/engine-javascript', 'shiki/dist/engine-javascript.mjs'],
@@ -194,31 +196,35 @@ test('Metro resolves the pinned Shiki lazy graph from the shared workspace', () 
     ['./node_modules/shiki/dist/wasm', 'shiki/dist/wasm.mjs'],
   ]
   for (const [request, packagePath] of requests) {
-    const modulePath = getWorkspaceLazyModulePath(request, workspaceRoot)
-    assert.equal(modulePath, path.join(workspaceRoot, 'node_modules', packagePath.replace(/\.mjs$/, '')))
-    assert.ok(fs.existsSync(path.join(workspaceRoot, 'node_modules', packagePath)), `missing lazy module: ${packagePath}`)
+    const modulePath = getWorkspaceLazyModulePath(request, lazyRoot)
+    assert.equal(modulePath, path.join(lazyRoot, 'node_modules', packagePath.replace(/\.mjs$/, '')))
+    assert.ok(fs.existsSync(path.join(lazyRoot, 'node_modules', packagePath)), `missing lazy module: ${packagePath}`)
   }
 
-  const lock = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'package-lock.json'), 'utf8'))
+  const lock = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'bun.lock'), 'utf8').replace(/,(\s*[}\]])/g, '$1'))
   for (const name of ['shiki', '@shikijs/core', '@shikijs/engine-javascript', '@shikijs/langs', '@shikijs/themes']) {
-    const pkg = JSON.parse(fs.readFileSync(path.join(workspaceRoot, 'node_modules', name, 'package.json'), 'utf8'))
-    assert.equal(pkg.version, lock.packages[`node_modules/${name}`].version)
+    const pkg = JSON.parse(fs.readFileSync(path.join(lazyRoot, 'node_modules', name, 'package.json'), 'utf8'))
+    assert.equal(`${name}@${pkg.version}`, lock.packages[name][0])
   }
 
-  const dynamicImports = (file) => {
-    const source = fs.readFileSync(path.join(workspaceRoot, 'node_modules', file), 'utf8')
-    return [...source.matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g)].map((match) => match[1])
-  }
-  assert.ok(dynamicImports('shiki/dist/langs.mjs').includes('@shikijs/langs/typescript'))
-  assert.ok(dynamicImports('shiki/dist/themes.mjs').includes('@shikijs/themes/github-dark'))
-  assert.ok(dynamicImports('shiki/dist/bundle-full.mjs').includes('shiki/wasm'))
+  // Shiki's bundled language and theme maps live in hashed chunks; collect every
+  // lazy import its dist makes.
+  const shikiDist = path.join(lazyRoot, 'node_modules', 'shiki', 'dist')
+  const dynamicImports = new Set(
+    fs.readdirSync(shikiDist)
+      .filter((file) => file.endsWith('.mjs'))
+      .flatMap((file) => [...fs.readFileSync(path.join(shikiDist, file), 'utf8')
+        .matchAll(/import\s*\(\s*["']([^"']+)["']\s*\)/g)].map((match) => match[1])),
+  )
+  for (const lazy of ['@shikijs/langs/typescript', '@shikijs/themes/github-dark', 'shiki/wasm'])
+    assert.ok(dynamicImports.has(lazy), `shiki no longer lazy-imports ${lazy}`)
 
   const request = './node_modules/@shikijs/langs/dist/typescript'
   const localResult = { source: 'app-local' }
   let usedWorkspace = false
   const localFirst = resolveWorkspaceLazyModule(
     request,
-    workspaceRoot,
+    lazyRoot,
     () => localResult,
     () => {
       usedWorkspace = true
@@ -232,10 +238,10 @@ test('Metro resolves the pinned Shiki lazy graph from the shared workspace', () 
   const workspaceResult = { source: 'workspace' }
   const fallback = resolveWorkspaceLazyModule(
     request,
-    workspaceRoot,
+    lazyRoot,
     () => { throw new Error('app-local module absent') },
     (modulePath) => {
-      assert.equal(modulePath, path.join(workspaceRoot, 'node_modules/@shikijs/langs/dist/typescript'))
+      assert.equal(modulePath, path.join(lazyRoot, 'node_modules/@shikijs/langs/dist/typescript'))
       return workspaceResult
     },
   )
@@ -249,6 +255,6 @@ test('Metro resolves the pinned Shiki lazy graph from the shared workspace', () 
     './node_modules/@shikijs/langs/../../outside',
     './node_modules/@shikijs/langs\\outside',
   ]) {
-    assert.equal(getWorkspaceLazyModulePath(unsafeOrUnrelated, workspaceRoot), null)
+    assert.equal(getWorkspaceLazyModulePath(unsafeOrUnrelated, lazyRoot), null)
   }
 })

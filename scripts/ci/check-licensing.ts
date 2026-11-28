@@ -1,22 +1,17 @@
 import { access, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+// @ts-expect-error -- plain ESM helper shared with the audit and SBOM scripts
+import { installedManifest, productionPackages, readBunLock } from './bun-lock.mjs'
 
 type PackageJson = {
   name?: string
   license?: string
 }
 
-type PackageLockPackage = {
-  license?: string
+type InstalledManifest = {
+  license?: string | { type?: string }
   licenses?: Array<string | { type?: string }> | string
-  dev?: boolean
-  devOptional?: boolean
-  link?: boolean
-}
-
-type PackageLock = {
-  packages?: Record<string, PackageLockPackage>
 }
 
 type LicenseException = {
@@ -140,17 +135,26 @@ async function checkRequiredDocs(failures: string[]) {
 }
 
 async function checkRuntimeDependencyLicenses(failures: string[]) {
-  const lockfile = await readJson<PackageLock>('package-lock.json')
+  // Web production dependencies: the root, the admin console and the workspace
+  // packages they use. Desktop runs its own check for what it ships.
+  const installed = productionPackages(readBunLock(root), ['', 'apps/admin']) as Map<
+    string,
+    { name: string; version: string; optional: boolean }
+  >
   const allowlist = await readJson<LicenseAllowlist>('scripts/ci/license-allowlist.json')
   const usedExceptions = new Set<LicenseException>()
   let audited = 0
 
-  for (const [packagePath, metadata] of Object.entries(lockfile.packages ?? {})) {
-    if (!isThirdPartyRuntimePackage(packagePath, metadata)) continue
+  for (const [id, { name: packageName, version, optional }] of installed) {
+    const manifest = installedManifest(packageName, version, root) as InstalledManifest | undefined
+    if (!manifest) {
+      // Optional per-platform binaries for other systems are not installed here.
+      if (optional) continue
+      failures.push(`${id} is a runtime dependency but is not installed; run bun install`)
+      continue
+    }
     audited += 1
-
-    const packageName = packageNameFromLockPath(packagePath)
-    const license = stringifyLicense(metadata.license ?? metadata.licenses)
+    const license = stringifyLicense(manifest.license ?? manifest.licenses)
     if (isAcceptableLicenseExpression(license)) continue
 
     const exception = findLicenseException(packageName, license, allowlist.runtimeLicenseExceptions)
@@ -159,7 +163,7 @@ async function checkRuntimeDependencyLicenses(failures: string[]) {
       continue
     }
 
-    failures.push(`${packagePath} declares risky or unknown license "${license}" without an allowlist entry`)
+    failures.push(`${id} declares risky or unknown license "${license}" without an allowlist entry`)
   }
 
   for (const exception of allowlist.runtimeLicenseExceptions) {
@@ -171,21 +175,13 @@ async function checkRuntimeDependencyLicenses(failures: string[]) {
     }
   }
 
-  if (audited === 0) failures.push('package-lock.json did not contain any runtime dependencies to audit')
+  if (audited === 0) failures.push('bun.lock did not contain any runtime dependencies to audit')
 }
 
-function isThirdPartyRuntimePackage(packagePath: string, metadata: PackageLockPackage): boolean {
-  return (
-    packagePath.startsWith('node_modules/') &&
-    metadata.link !== true &&
-    metadata.dev !== true &&
-    metadata.devOptional !== true
-  )
-}
-
-function stringifyLicense(license: PackageLockPackage['license'] | PackageLockPackage['licenses']): string {
+function stringifyLicense(license: InstalledManifest['license'] | InstalledManifest['licenses']): string {
   if (!license) return 'MISSING'
   if (typeof license === 'string') return license
+  if (!Array.isArray(license)) return license.type || 'MISSING'
   return license
     .map((entry) => (typeof entry === 'string' ? entry : entry.type))
     .filter((entry): entry is string => Boolean(entry))
@@ -234,15 +230,6 @@ function matchesPackagePattern(packageName: string, pattern: string): boolean {
 
 function escapeRegex(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-function packageNameFromLockPath(packagePath: string): string {
-  const lastNodeModulesSegment = packagePath.split('node_modules/').filter(Boolean).pop()
-  if (!lastNodeModulesSegment) return packagePath
-
-  const parts = lastNodeModulesSegment.split('/')
-  if (parts[0]?.startsWith('@')) return `${parts[0]}/${parts[1]}`
-  return parts[0] ?? lastNodeModulesSegment
 }
 
 async function readJson<T>(relativePath: string): Promise<T> {

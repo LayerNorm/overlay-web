@@ -16,7 +16,7 @@ Overlay is a Next.js app backed by Convex, server-mediated provider adapters, an
 - `convex/**` owns durable app state, domain mutations, scheduled work, and Stripe webhook handling.
 - `apps/admin/**` holds the standalone operator console (see `internal/develop/admin-console.md`): its own Next.js app, WorkOS sign-in, session cookie, and a single `convex-admin` module that reaches the `admin/console:*` Convex functions with `ADMIN_API_SECRET`. `apps/admin` may not import `src/**` and `src/**` may not import it back.
 - `scripts/` is split by purpose: `scripts/ci/` (checks, boundary rules, baselines consumers), `scripts/release/` (hosted build wrappers and trusted PR preview lifecycle control), `scripts/qa/` (smoke tests, rehearsal/readiness harnesses), `scripts/db/` (migrations, backfills, ops), `scripts/lib/` (shared script helpers). `scripts/dev-setup.sh` stays at root. The retired staging ignore-build script is removed; `overlay-landing` uses native Git deployment and the hosted build wrapper.
-- Every Overlay surface lives in this one repository. The web app and its backend (`src/`, `convex/`) sit at the root and are authoritative; the other surfaces are `apps/desktop/**` (Electron Mac app), `apps/mobile/**` (Expo iOS app) and `apps/chrome/**` (Chrome extension), beside `apps/admin/**`. Each app imports shared code from `packages/*` (and mobile from `src/shared/*` and `convex/_generated`) instead of copying it, so a change to a shared contract, package or API is made and checked on every surface in one change. Each app keeps its own `package.json`, lockfile, CI workflow and release path; root lint, typecheck, tests, Docker and Vercel builds skip them, and the web production build is skipped when a commit only touches them. See `internal/develop/surfaces.md`.
+- Every Overlay surface lives in this one repository. The web app and its backend (`src/`, `convex/`) sit at the root and are authoritative; the other surfaces are `apps/desktop/**` (Electron Mac app), `apps/mobile/**` (Expo iOS app) and `apps/chrome/**` (Chrome extension), beside `apps/admin/**`. Each app imports shared code from `packages/*` (and mobile from `src/shared/*` and `convex/_generated`) instead of copying it, so a change to a shared contract, package or API is made and checked on every surface in one change. Each app is a workspace of the one root Bun install (`bun.lock`) with its own `package.json`, CI workflow and release path; root lint, typecheck, tests, Docker and Vercel builds skip them, and the web production build is skipped when a commit only touches them. See `internal/develop/surfaces.md`.
 - `packages/overlay-app-core/**` holds shared cross-surface contracts and UI settings types.
 - `packages/overlay-api-client/**` holds typed transport wrappers for `/api/v1/**`.
 - `packages/overlay-ui/**` holds the shared presentation primitives (buttons, inputs, dialogs,
@@ -37,7 +37,7 @@ App data lives exclusively in Convex. There is no database-provider switch or
 capability set to check: `src/server/app-data/repositories.ts` constructs the
 Convex repositories the server context hands to domain services, and module-level
 HTTP services construct their Convex repository directly. Browser code reads and
-writes Convex natively and never asks which backend is in use; `npm run check:native-architecture` keeps it
+writes Convex natively and never asks which backend is in use; `bun run check:native-architecture` keeps it
 that way (no provider switch, no browser token argument, and no new browser HTTP call for data Convex already
 serves). The bespoke
 Postgres repository layer, Drizzle schema, app-data migrations, and parity
@@ -307,10 +307,10 @@ the current revision. Deploy Convex only from the matching release worktree:
 
 ```bash
 # Dedicated staging worktree, for a staging release candidate
-npm run convex:push:dev
+bun run convex:push:dev
 
 # Clean canonical main worktree, after the main web deployment is live
-npm run convex:push:prod
+bun run convex:push:prod
 ```
 
 Never run a Convex deploy from a feature worktree, never use `convex:push:all`, and do not pass `.env.local` to production Convex deploy commands; that can point deploys at the dev slug.

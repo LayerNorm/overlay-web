@@ -1,5 +1,8 @@
+FROM oven/bun:1.4.5 AS bun
+
 FROM node:22-bookworm AS builder
 WORKDIR /app
+COPY --from=bun /usr/local/bin/bun /usr/local/bin/bun
 
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NEXT_OUTPUT_MODE=standalone
@@ -26,16 +29,20 @@ ENV INTERNAL_API_SECRET=build-time-placeholder-api \
     SESSION_TRANSFER_KEY=build-time-placeholder \
     SESSION_COOKIE_ENCRYPTION_KEY=build-time-placeholder
 
-COPY .npmrc package.json package-lock.json ./
+COPY package.json bun.lock bunfig.toml ./
 COPY packages ./packages
-RUN npm ci --include=dev --no-audit --no-fund \
-  --fetch-retries=5 \
-  --fetch-retry-mintimeout=20000 \
-  --fetch-retry-maxtimeout=120000
+# bun.lock covers every workspace; their manifests must be present to install from it.
+COPY apps/admin/package.json ./apps/admin/
+COPY apps/chrome/package.json ./apps/chrome/
+COPY apps/chrome/packages ./apps/chrome/packages
+COPY apps/desktop/package.json ./apps/desktop/
+COPY apps/mobile/package.json ./apps/mobile/
+# Only the web app and the workspace packages it uses.
+RUN bun install --frozen-lockfile --filter getoverlay-landing
 
 COPY . .
 RUN touch .env.better-auth.local
-RUN npm run build
+RUN bun run build
 
 FROM scratch AS rds-ca
 ADD https://truststore.pki.rds.amazonaws.com/global/global-bundle.pem /aws-rds-global-bundle.pem
