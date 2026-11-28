@@ -16,7 +16,8 @@ import { useWorkspace } from "@/contexts/WorkspaceContext";
 import { useLiveWorkspaceBilling } from "@/hooks/use-billing";
 import type { OnboardingSession, OnboardingSessionResponse } from "@/shared/onboarding/session";
 import { useWorkspaceHref } from "@/hooks/use-workspace-href";
-import { OnboardingWorkHandoff } from "@/components/providers/OnboardingWorkHandoff";
+import { OnboardingHandoff } from "@/components/providers/OnboardingHandoff";
+import { agentThreadHref } from "@/components/layout/sidebar-nav";
 import { OnboardingDots } from "./OnboardingDots";
 import { OnboardingIntro } from "./OnboardingIntro";
 import { DesktopOnboarding } from "./desktop/DesktopOnboarding";
@@ -87,7 +88,7 @@ function AuthenticatedOnboardingShell({
   const [bypass, setBypass] = useState(false);
   const [intro, setIntro] = useState(false);
   const [active, setActive] = useState(false);
-  const [handoff, setHandoff] = useState<{ taskId: string; session: OnboardingSession } | null>(null);
+  const [handoff, setHandoff] = useState<OnboardingSession | null>(null);
   // A new account on Overlay Desktop sets up the app first; the conversation starts with its answers. The app's
   // preload exposes its bridge before the page runs, so this is known before the bridge's handshake finishes.
   const [desktopApp] = useState(() => typeof window !== "undefined" && "overlayDesktop" in window);
@@ -134,24 +135,23 @@ function AuthenticatedOnboardingShell({
     });
     return () => abort.abort();
   }, [workspaceId, retry, desktopApp]);
-  const openWork = useCallback((taskId = result?.session?.taskId, replace = false) => {
-    if (!taskId) return;
-    const href = buildWorkspaceHref(workspaceId, `/app/work?task=${encodeURIComponent(taskId)}&scope=personal`, 'personal');
+  const openChat = useCallback((session: OnboardingSession, replace = false) => {
+    const href = agentThreadHref(buildWorkspaceHref(workspaceId, "/app/agents", "workspace"), session.agentId, session.conversationId, "workspace");
     if (replace) router.replace(href);
     else router.push(href);
-  }, [buildWorkspaceHref, result?.session?.taskId, router, workspaceId]);
+  }, [buildWorkspaceHref, router, workspaceId]);
   const finishHandoff = useCallback(() => setHandoff(null), []);
   const updateResult = (next: OnboardingSessionResponse) => {
-    if (next.completed && next.session?.taskId) {
-      setHandoff({ taskId: next.session.taskId, session: result?.session ?? next.session });
+    if (next.completed && next.session) {
+      setHandoff(result?.session ?? next.session);
       setActive(false);
-      openWork(next.session.taskId);
+      openChat(next.session);
     }
     setResult(next);
   };
   const billingRecovery = pathname?.endsWith('/settings') && result?.session?.step === 'task';
   const locked = !bypass && !billingRecovery && (!result || desktopSetup || (active && !result.completed) || Boolean(handoff));
-  const visibleSession = handoff?.session ?? result?.session;
+  const visibleSession = handoff ?? result?.session;
   const showConversation =
     !bypass && !billingRecovery && billingSummary && visibleSession && (active || Boolean(handoff));
   return (
@@ -217,14 +217,13 @@ function AuthenticatedOnboardingShell({
               personal={activeWorkspace?.kind === 'personal'}
               workspaceName={activeWorkspace?.name ?? visibleSession.workspaceContext?.workspaceName ?? 'Your workspace'}
               onChange={updateResult}
-              onShowWork={() => openWork()}
               onSkip={skip}
             />
           </div>
         ) : null}
-        {(!locked && (bypass || result)) || handoff ? <OnboardingWorkHandoff pending={handoff ? { taskId: handoff.taskId, onReady: finishHandoff, onTaskMissing: () => openWork(handoff.taskId, true) } : null}>
+        {(!locked && (bypass || result)) || handoff ? <OnboardingHandoff pending={handoff ? { conversationId: handoff.conversationId, onReady: finishHandoff, onConversationMissing: () => openChat(handoff, true) } : null}>
           {children}
-        </OnboardingWorkHandoff> : null}
+        </OnboardingHandoff> : null}
         {intro && !billingRecovery && billingSummary ? <OnboardingIntro onDone={dismissIntro} /> : null}
       </main>
     </>

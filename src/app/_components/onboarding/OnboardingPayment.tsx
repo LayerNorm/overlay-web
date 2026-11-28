@@ -77,14 +77,14 @@ type PaymentProps = {
   onPrepare(): Promise<unknown>
   onStart(): Promise<void>
   onEdit(): void
-  onOpenWork?(): Promise<void>
+  onFinishSetup?(): Promise<void>
 }
 
 export function OnboardingPayment(props: PaymentProps) {
   return 'summary' in props ? <OnboardingPaymentState {...props} /> : <LiveOnboardingPayment {...props} />
 }
 
-function MemberBillingControls({ summary, ready, workspaceName, billingContactName, locked, requested, onRequest, onOpenWork, children }: {
+function MemberBillingControls({ summary, ready, workspaceName, billingContactName, locked, requested, onRequest, onFinishSetup, children }: {
   summary: WorkspaceBillingSummaryResponse
   ready: boolean
   workspaceName: string
@@ -92,7 +92,7 @@ function MemberBillingControls({ summary, ready, workspaceName, billingContactNa
   locked: boolean
   requested: boolean
   onRequest(): void
-  onOpenWork?: () => void
+  onFinishSetup?: () => void
   children: ReactNode
 }) {
   const memberRequest = !summary.canManage && summary.executionAccess?.state === 'subscription_required'
@@ -101,7 +101,7 @@ function MemberBillingControls({ summary, ready, workspaceName, billingContactNa
     <div className="flex flex-wrap items-center gap-2">
       {memberRequest ? <Button variant="primary" size="sm" disabled={locked || requested} onClick={onRequest}>{requested ? 'Request sent' : billingContactName ? `Ask ${billingContactName} to subscribe` : 'Ask an admin to subscribe'}</Button> : null}
       {children}
-      {!ready && !summary.canManage && onOpenWork ? <Button variant="secondary" size="sm" disabled={locked} onClick={onOpenWork}>Open Work</Button> : null}
+      {!ready && !summary.canManage && onFinishSetup ? <Button variant="secondary" size="sm" disabled={locked} onClick={onFinishSetup}>Finish setup</Button> : null}
     </div>
     {requested ? <p role="status" className="text-xs text-muted-foreground">{ready
       ? `${workspaceName} is now subscribed. Your task is ready when you are.`
@@ -128,7 +128,7 @@ export function OnboardingPaymentState({
   onPrepare,
   onStart,
   onEdit,
-  onOpenWork,
+  onFinishSetup,
 }: PaymentProps) {
   const [busy, setBusy] = useState(false)
   const [localRequested, setLocalRequested] = useState(false)
@@ -217,7 +217,7 @@ export function OnboardingPaymentState({
     {!summary.canManage && needsRecovery ? <p className="text-sm">Ask a workspace owner or admin to activate billing. Your draft is saved.</p> : null}
     <MemberBillingControls summary={summary} ready={ready} workspaceName={workspaceName}
       billingContactName={billingContactName} locked={locked} requested={requested}
-      onRequest={() => void requestBilling()} onOpenWork={onOpenWork && (() => void run(onOpenWork))}>
+      onRequest={() => void requestBilling()} onFinishSetup={onFinishSetup && (() => void run(onFinishSetup))}>
       <BillingActions workspaceId={workspaceId} ready={ready} pending={pending} needsRecovery={needsRecovery}
         canManage={summary.canManage} locked={locked} accepted={accepted}
         onStart={() => void run(onStart)} onSubscribe={() => void subscribe()}
