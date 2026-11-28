@@ -189,7 +189,7 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
           showReply={false}
           requested={billingRequestSent}
           onRequestedChange={(requested) => setBillingRequestFor(requested ? requestKey : null)}
-          onOpenWork={openDraft}
+          onFinishSetup={openDraft}
           title={taskDraft}
           disabled={busy}
           onPrepare={prepareTask}

@@ -510,7 +510,7 @@ test('personal onboarding keeps the existing persisted intro', async () => {
   assert.equal(f.messages[0].content, "Hi, I'm Overlay, your chief of staff. I'll run your AI employees and keep your work moving.\n\nWhat should I call you?")
 })
 
-test('Open Work completes an unpaid saved draft without executing, validates ownership, and is replayable', async () => {
+test('Finish setup completes an unpaid saved draft without executing, validates ownership, and is replayable', async () => {
   const f = fixture(false)
   let result = await advanceToTask(f)
   result = await act(f, { action: 'draft_task', revision: result.session!.revision, value: 'Review the launch plan' })
