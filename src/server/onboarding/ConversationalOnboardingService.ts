@@ -109,7 +109,8 @@ export class ConversationalOnboardingService {
       return { completed: false, session: existing.session }
     }
     const list = await this.deps.effects.agents.list({ actorUserId: userId, workspaceId })
-    const overlay = list.agents.find((agent) => agent.isDefault || agent.name.trim().toLowerCase() === 'overlay')
+    const overlay = list.agents.find((agent) => agent.agentRole === 'workspace_chief')
+      ?? list.agents.find((agent) => agent.isDefault || agent.name.trim().toLowerCase() === 'overlay')
     if (!overlay) throw new OnboardingServiceError('Overlay agent is unavailable', 409, 'overlay_agent_unavailable')
     const thread = await this.deps.effects.agents.resolveMainThread({ actorUserId: userId, workspaceId, agentId: overlay.id })
     const workspaceContext = await this.deps.effects.workspaces.getOnboardingContext({ actorUserId: userId, workspaceId })

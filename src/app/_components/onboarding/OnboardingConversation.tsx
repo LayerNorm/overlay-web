@@ -1,7 +1,6 @@
 'use client'
 
 import { useCallback, useRef, useState, type ReactNode } from 'react'
-import { ArrowRight } from 'lucide-react'
 import { Button } from '@overlay/ui/primitives'
 import { DirectMessageExperience } from '@/features/chat/components/DirectMessageExperience'
 import { useAuth } from '@/contexts/AuthContext'
@@ -30,9 +29,9 @@ const PLACEHOLDERS: Partial<Record<OnboardingSession['step'], string>> = {
   task: 'Or describe a task',
 }
 
-type Props = { session: OnboardingSession; billingSummary: WorkspaceBillingSummaryResponse; workspaceName: string; personal: boolean; onChange(result: OnboardingSessionResponse): void; onShowWork(): void; onSkip(): void }
+type Props = { session: OnboardingSession; billingSummary: WorkspaceBillingSummaryResponse; workspaceName: string; personal: boolean; onChange(result: OnboardingSessionResponse): void; onSkip(): void }
 
-export function OnboardingConversation({ session, billingSummary, workspaceName, personal, onChange, onShowWork, onSkip }: Props) {
+export function OnboardingConversation({ session, billingSummary, workspaceName, personal, onChange, onSkip }: Props) {
   const { user } = useAuth()
   const [input, setInput] = useState(() => readOnboardingDraft(session))
   const [inputRevision, setInputRevision] = useState(0)
@@ -190,7 +189,7 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
           showReply={false}
           requested={billingRequestSent}
           onRequestedChange={(requested) => setBillingRequestFor(requested ? requestKey : null)}
-          onOpenWork={openDraft}
+          onFinishSetup={openDraft}
           title={taskDraft}
           disabled={busy}
           onPrepare={prepareTask}
@@ -198,7 +197,6 @@ export function OnboardingConversation({ session, billingSummary, workspaceName,
           onEdit={() => { replaceInput(taskDraft); setTaskDraft(null) }}
         />
         : <SingleChoices choices={labels} disabled={busy} onPick={answer} />
-      case 'complete': return <Button variant="primary" size="sm" onClick={onShowWork}>Open Work<ArrowRight className="size-3.5" /></Button>
       default: return null
     }
   }

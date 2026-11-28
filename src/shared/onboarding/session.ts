@@ -138,7 +138,7 @@ export function preparedOnboardingReply(step: OnboardingStep, profile: Onboardin
     memories: 'Do you use another AI assistant? I can pick up what it already knows about your work.',
     teammates: "Want to bring in anyone you work with? They'll join this workspace and can bring their own agents.",
     task: "Last thing. What's one task we can start on?",
-    complete: "Your first task is now in Work. I'll keep you updated there.",
+    complete: "Your first task is running. You can follow it in Work, and ask me anything here.",
   }
   return {
     message: messages[step], mode: 'prepared',
