@@ -103,9 +103,9 @@ install|uninstall|status --config` (macOS launchd) restart and inspect it.
 `config.json` must say `"localTools": true`; a configuration written for a
 third-party agent is refused with a reconnect message. Host and protocol
 versions are released together; the web enrollment command, desktop pin and host
-CLI must name the same version (`npm run verify:agent-host-release`, and
+CLI must name the same version (`bun run verify:agent-host-release`, and
 `scripts/ci/desktop-web-shell-boundary.mjs` checks the desktop pin). Publish with
-the `publish-agent-host` workflow after `npm run check:local-computer:release`.
+the `publish-agent-host` workflow after `bun run check:local-computer:release`.
 
 ## Removed third-party agent data
 
@@ -122,7 +122,7 @@ production reports nothing left, delete that migration, the script,
 
 ## QA
 
-`npm run check:local-computer` covers Convex, server, protocol and host. A
+`bun run check:local-computer` covers Convex, server, protocol and host. A
 protected Preview needs `--hosting-auth-file` (a private, one-shot file holding
 the exact Preview origin and the project bypass secret; see
 `browser-testing-with-agent-browser.md`). Real screen and input control needs a

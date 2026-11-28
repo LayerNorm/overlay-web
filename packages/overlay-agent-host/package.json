@@ -40,9 +40,9 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm --prefix ../overlay-agent-bridge-protocol run build && tsc -p tsconfig.build.json",
-    "prepack": "npm run build",
-    "test": "npm run build && tsx --test src/*.test.ts",
+    "build": "bun run --cwd ../overlay-agent-bridge-protocol build && tsc -p tsconfig.build.json",
+    "prepack": "bun run build",
+    "test": "bun run build && tsx --test src/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

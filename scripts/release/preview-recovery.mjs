@@ -68,8 +68,9 @@ export async function main(env = process.env, fetchImpl = fetch) {
   const availableCents = supplied ? Number(supplied) : paid ? 1000 : undefined
   const requestId = env.QA_REQUEST_ID?.trim() || `gha-${env.GITHUB_RUN_ID}`
   if (!env.QA_REQUEST_ID?.trim() && !/^\d+$/.test(env.GITHUB_RUN_ID ?? '')) throw new Error('Recovery request ID is missing')
-  const lock = JSON.parse(readFileSync(new URL('../../package-lock.json', import.meta.url), 'utf8'))
-  const version = lock.packages['node_modules/convex']?.version
+  // bun.lock is JSON with trailing commas; a top-level entry is ["name@version", ...].
+  const lock = JSON.parse(readFileSync(new URL('../../bun.lock', import.meta.url), 'utf8').replace(/,(\s*[}\]])/g, '$1'))
+  const version = lock.packages.convex?.[0]?.replace(/^convex@/, '')
   if (!/^\d+\.\d+\.\d+$/.test(version ?? '')) throw new Error('Pinned Convex client version is missing')
   const controller = new PreviewFixtureRecovery({
     github: apiClient({ token: env.GITHUB_TOKEN, service: 'GitHub', base: 'https://api.github.com', fetchImpl }),

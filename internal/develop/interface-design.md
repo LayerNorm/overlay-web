@@ -49,7 +49,7 @@ The guided onboarding conversation shares live room read markers with Chats. Roo
 
 Workspace mockups must strictly reuse this production shell, not approximate it with a custom single sidebar or move agent threads into tabs above the conversation. The canonical interactive reference is `internal/plans/mockups/overlay-app.html`, which bundles the real production shell, sidebars, right panel and route pages with fixture data. See `internal/plans/mockups/README.md` for how to build feature mockups from it. This rule governs mockups, not removal of the existing optional `UnifiedSidebar` setting.
 
-Regression checks: `npm --prefix packages/overlay-shell-react test`, focused sidebar/navigation/thread tests, `npm run check:raw-controls`, and `npm run check:module-boundaries`. Browser QA should compare light/dark and collapsed/expanded states with `internal/plans/mockups/overlay-app.html` (rebuilt from the branch), then check scope switching, Settings, More, agent thread actions, and mobile navigation on the isolated PR preview.
+Regression checks: `npm --prefix packages/overlay-shell-react test`, focused sidebar/navigation/thread tests, `bun run check:raw-controls`, and `bun run check:module-boundaries`. Browser QA should compare light/dark and collapsed/expanded states with `internal/plans/mockups/overlay-app.html` (rebuilt from the branch), then check scope switching, Settings, More, agent thread actions, and mobile navigation on the isolated PR preview.
 
 # Overlay interface design
 
@@ -296,7 +296,7 @@ at `z-50`, with Radix collision handling in both modes.
 - `link`: inline text actions.
 - `danger`: destructive confirmations only.
 
-`className` on a `Button` sets size and layout, not color, border or background. `npm run check:raw-controls` enforces this: it fails on an `unstyledButton()` string that rebuilds a variant's look and on color classes passed to a non-ghost variant. Real exceptions (checkboxes, segmented toggles, selectable cards) carry a `// overlay:button-style: <reason>` comment above the class line. Shadows: none on in-page surfaces, `shadow-md` for menus, popovers and tooltips, `shadow-lg` for dialogs and sheets. Motion: 150ms for hover and color, 200ms for menus and panels.
+`className` on a `Button` sets size and layout, not color, border or background. `bun run check:raw-controls` enforces this: it fails on an `unstyledButton()` string that rebuilds a variant's look and on color classes passed to a non-ghost variant. Real exceptions (checkboxes, segmented toggles, selectable cards) carry a `// overlay:button-style: <reason>` comment above the class line. Shadows: none on in-page surfaces, `shadow-md` for menus, popovers and tooltips, `shadow-lg` for dialogs and sheets. Motion: 150ms for hover and color, 200ms for menus and panels.
 
 ## Prose (Typeset)
 

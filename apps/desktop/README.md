@@ -11,8 +11,8 @@ macOS on Apple Silicon only.
 
 ```sh
 cp .env.example .env
-npm ci
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
 `APP_SERVER_URL` picks the Overlay Server the window loads (HTTPS, or HTTP on
@@ -20,10 +20,10 @@ localhost only). SSO opens in your normal browser and hands a one-time,
 PKCE-bound session back to the app.
 
 ```sh
-npm run lint
-npm test
-npm run build
-npm run test:e2e
+bun run lint
+bun run test
+bun run build
+bun run test:e2e
 ```
 
 ## How it works

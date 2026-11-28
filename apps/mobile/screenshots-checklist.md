@@ -31,7 +31,7 @@ Option A: iOS Simulator
 # Boot iPhone 16 Pro Max simulator
 xcrun simctl boot "iPhone 16 Pro Max"
 # Build and run your app
-npm run ios
+bun run ios
 # Use Cmd+S in Simulator to save screenshots
 ```
 

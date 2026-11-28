@@ -1,15 +1,18 @@
 name: CI dependencies
-description: Restore an exact installed dependency tree from the Actions cache, or install it from the lockfile.
+description: Set up the pinned Node.js and Bun, then install the monorepo from bun.lock with Bun's download cache restored.
 inputs:
   node-version:
     description: Node.js major version
     required: true
+  lifecycle-scripts:
+    description: "'true' runs install scripts of the workspaces and trusted dependencies (the desktop app needs them)"
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
-    # Exact patch versions keep the dependency cache key stable. A floating major
-    # resolved to different patches on different runner images, so PRs missed
-    # main's cache and wrote ~800 MB copies that evicted it. Bump both together.
+    # Exact patch versions keep the cache key stable across runner images. Bump
+    # both together.
     - name: Resolve pinned Node.js version
       id: pinned
       shell: bash
@@ -27,31 +30,36 @@ runs:
       with:
         node-version: ${{ steps.pinned.outputs.version }}
         package-manager-cache: false
-    - name: Pin npm
-      shell: bash
-      run: npm install -g npm@11.11.0 --no-audit --no-fund
-    - name: Restore installed dependencies
+    # The repository's package manager; its version comes from packageManager in package.json.
+    - name: Set up Bun
+      id: bun
+      uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+      with:
+        bun-version-file: package.json
+    # Bun installs by linking from its download cache, so caching downloads
+    # (not node_modules) keeps a warm install to seconds.
+    - name: Restore Bun download cache
       id: dependencies
       uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: |
-          node_modules
-          packages/*/node_modules
-          apps/*/node_modules
-        key: ci-dependencies-v2-${{ runner.os }}-${{ runner.arch }}-node${{ inputs.node-version }}-${{ steps.node.outputs.node-version }}-npm11.11.0-${{ hashFiles('package-lock.json', 'package.json', 'packages/*/package.json', 'apps/admin/package.json', '.npmrc', '.github/actions/ci-dependencies/action.yml') }}
+        path: ~/.bun/install/cache
+        key: bun-cache-v1-${{ runner.os }}-${{ runner.arch }}-bun${{ steps.bun.outputs.bun-version }}-${{ hashFiles('bun.lock', 'bunfig.toml') }}
+        restore-keys: |
+          bun-cache-v1-${{ runner.os }}-${{ runner.arch }}-bun${{ steps.bun.outputs.bun-version }}-
+    # --frozen-lockfile fails when package.json and bun.lock disagree.
     - name: Install from lockfile
-      if: steps.dependencies.outputs.cache-hit != 'true'
       shell: bash
-      run: npm ci --ignore-scripts --no-audit --no-fund
+      env:
+        LIFECYCLE_SCRIPTS: ${{ inputs.lifecycle-scripts }}
+      run: |
+        if [ "$LIFECYCLE_SCRIPTS" = true ]; then bun install --frozen-lockfile
+        else bun install --frozen-lockfile --ignore-scripts; fi
     # Merge-queue refs are deleted after merging, so their saves only evict main's.
-    - name: Save installed dependencies
+    - name: Save Bun download cache
       if: steps.dependencies.outputs.cache-hit != 'true' && github.event_name != 'merge_group'
       uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
       with:
-        path: |
-          node_modules
-          packages/*/node_modules
-          apps/*/node_modules
+        path: ~/.bun/install/cache
         key: ${{ steps.dependencies.outputs.cache-primary-key }}
     - name: Report dependency cache result
       shell: bash

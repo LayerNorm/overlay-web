@@ -80,12 +80,12 @@ The workspace balance is the only automatic spending limit, plus an optional fix
 
 Explicit BYO inference still requires a workspace that is not under 2%, and charges no Overlay model usage. Computers and managed sandboxes follow the same rule: they start only with at least 2% left (after a top-up), hold nothing, are charged observed usage by the lease meter, and stop when a charge leaves the workspace under 2% or uses up a spend limit (see `billing-holds-and-machine-metering.md`).
 
-The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Each automation run is also charged a flat 20 Workflow Steps at Vercel's rate ($2.50 per 100,000 steps) with the configured usage markup, after the run. Functions, integrations, and MCP tools have no per-turn step limit: the workspace budget stops the work. An MCP tool result is shortened only past 400,000 characters, and agent runs keep large results as private artifacts the agent can page. File ingestion is bounded by an abuse rate limit (500 requests per hour per user, 1,000 per IP) and the account storage cap. Keep `npm run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
+The launch coverage gate lives in `src/server/billing/billable-feature-coverage.ts`. Shared conversations/agents, embeddings/search, browser/sandbox, hosted media/transcription, and automation/API provider calls are metered. Each automation run is also charged a flat 20 Workflow Steps at Vercel's rate ($2.50 per 100,000 steps) with the configured usage markup, after the run. Functions, integrations, and MCP tools have no per-turn step limit: the workspace budget stops the work. An MCP tool result is shortened only past 400,000 characters, and agent runs keep large results as private artifacts the agent can page. File ingestion is bounded by an abuse rate limit (500 requests per hour per user, 1,000 per IP) and the account storage cap. Keep `bun run check:owner-funded-boundary` and the coverage test passing for every hosted-cost entry point.
 
 The workspace billing contract runs against Convex:
 
 ```bash
-npm run test:workspace-billing-contract:convex
+bun run test:workspace-billing-contract:convex
 ```
 
 The contract covers removed-member payer denial. The 2% check, direct charges, spend limits and the hold release are covered by unit and Convex tests (`billing-runtime.test.ts`, `provider-budget-check.test.ts`, `convex/retireHolds.convex.test.ts`). The Stripe webhook suite separately proves duplicate event no-ops and stale-event ordering.

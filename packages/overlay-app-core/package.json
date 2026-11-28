@@ -29,10 +29,10 @@
     "./theme": "./src/theme.ts"
   },
   "dependencies": {
-    "@overlay/auth-contracts": "file:../overlay-auth-contracts",
-    "@overlay/billing": "file:../overlay-billing",
-    "@overlay/llm-gateway": "file:../overlay-llm-gateway",
-    "@overlay/storage-contracts": "file:../overlay-storage-contracts",
+    "@overlay/auth-contracts": "workspace:*",
+    "@overlay/billing": "workspace:*",
+    "@overlay/llm-gateway": "workspace:*",
+    "@overlay/storage-contracts": "workspace:*",
     "hast-util-from-html": "^2.0.3",
     "hast-util-raw": "^9.1.0",
     "hast-util-sanitize": "^5.0.2",
