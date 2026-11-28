@@ -1,6 +1,6 @@
 # One repository for every Overlay surface
 
-Status: Phases 1 and 2 merged (2026-11-27); Phase 4 (one Bun install) in progress; Phases 3 and 5 not started.
+Status: Phases 1, 2 and 4 merged (2026-11-27); Phases 3 and 5 not started.
 
 ## Goal
 
@@ -27,7 +27,7 @@ overlay/              ← this repository (GitHub LayerNorm/overlay, local folde
 | 1. Import | Bring desktop, mobile and Chrome into `apps/` with history; remove submodules; one bridge copy; per-app CI; desktop releases from this repo; web deploy skips app-only commits | Merged to main and deployed; web production verified |
 | 2. Mobile green | Fix the 20 node and 18 DOM transcript test failures against current web; widen the mobile workflow to `packages/**`, `src/shared/**`, `convex/**`; turn on server push | Merged to main; mobile suites green locally (node 282/282, transcript 96 + 55); server push on; device push QA pending (see Phase 2 record) |
 | 3. Chrome port | Port the side panel from the removed `MessageList` to the current `@overlay/chat-react` transcript; align React types; widen its workflow to the shared chat packages | Not started |
-| 4. One install | Make desktop, mobile and Chrome workspaces of one root install with one lockfile; replace path imports with package imports. Done with Bun as the package manager (see Phase 4 record) | In progress: see Phase 4 record |
+| 4. One install | Make desktop, mobile and Chrome workspaces of one root install with one lockfile; replace path imports with package imports. Done with Bun as the package manager (see Phase 4 record) | Merged to main (#689) and deployed: web and admin production builds install with Bun; EAS cloud build and a signed desktop release not yet run |
 | 5. Web in apps/web | Move the web app into `apps/web` (Vercel root directory, CI, docs) | Not started |
 
 ## Phase 1 record
@@ -122,5 +122,5 @@ behind a GitHub runner backlog when this was written).
   `scripts/ci/run-mint.mjs`.
 - Bun has no nested or range-keyed overrides. Dropped nested pins were checked against the
   new production audit; the ones still needed became direct pins.
-- Verification is recorded in the pull request.
+- Verification is recorded in the pull request. After merge, `overlay-admin` failed on its dashboard install command (`npm ci`); `apps/admin/vercel.json` now sets a Bun install, and web and admin production are live on it.
 
