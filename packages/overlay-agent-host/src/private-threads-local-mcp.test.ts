@@ -100,6 +100,19 @@ test('a server that fails to start is left out, named for the model, and its env
   } finally { await pool.shutdown() }
 })
 
+test('a connection that finishes after the start deadline is closed, not left running', async () => {
+  let closed = 0
+  const pool = new LocalMcpServers({
+    startTimeoutMs: 20,
+    connect: () => new Promise(resolve => setTimeout(() => resolve({ tools: {}, close: async () => { closed++ } }), 80)),
+  })
+  try {
+    await assert.rejects(pool.check(server()), /did not answer within a minute/)
+    assert.deepEqual(pool.running(), [])
+    await waitUntil(() => closed === 1)
+  } finally { await pool.shutdown() }
+})
+
 test('tool names and server requests are bounded', () => {
   assert.equal(localMcpToolName('My Files!', 'read file'), 'My_Files__read_file')
   assert.ok(localMcpToolName('x'.repeat(80), 'y'.repeat(80)).length <= 64)

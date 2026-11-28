@@ -116,11 +116,15 @@ describe('importing again', () => {
     const resolve = (id: string) => resolveLocalSetupItem(home, id, 'darwin')
     const ledger = { [ids.researcher!]: importDigest(resolve(ids.researcher!)!), [ids['weekly-report']!]: importDigest(resolve(ids['weekly-report']!)!) }
     write('.claude/skills/weekly-report/SKILL.md', '---\nname: weekly-report\ndescription: Writes the Friday update\n---\nNow with charts.')
-    const marked = markImported(apps, ledger, resolve, new Set([ids.filesystem!]))
+    const servers = new Map([[ids.filesystem!, importDigest(resolve(ids.filesystem!)!)]])
+    const marked = markImported(apps, ledger, resolve, servers)
     const imported = marked[0]!.items.filter((item) => item.imported).map((item) => item.name)
     expect(imported).toEqual(['researcher', 'filesystem'])
     // Another workspace has nothing imported.
-    expect(markImported(apps, {}, resolve, new Set()).flatMap((app) => app.items).some((item) => item.imported)).toBe(false)
+    expect(markImported(apps, {}, resolve, new Map()).flatMap((app) => app.items).some((item) => item.imported)).toBe(false)
+    // A local server whose configuration changed in its app is offered again, so importing updates it in place.
+    const changed = new Map([[ids.filesystem!, 'digest-of-an-older-configuration']])
+    expect(markImported(apps, ledger, resolve, changed)[0]!.items.find((item) => item.name === 'filesystem')!.imported).toBeFalsy()
   })
 })
 

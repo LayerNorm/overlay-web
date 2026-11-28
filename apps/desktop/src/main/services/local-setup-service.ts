@@ -129,24 +129,27 @@ export function importDigest(item: ResolvedLocalSetupItem): string {
   return createHash('sha256').update(JSON.stringify(item)).digest('hex').slice(0, 32)
 }
 
-/** `{ [workspaceId]: { [itemId]: digest } }` of items imported from this computer. */
+/**
+ * `{ [workspaceId]: { [itemId]: digest } }` of items imported from this computer; local servers, which stay on this
+ * computer whatever the workspace, are under `LOCAL_SERVERS`.
+ */
 type ImportLedger = Record<string, Record<string, string>>
+const LOCAL_SERVERS = '@this-computer'
 
 /**
- * Marks items already in the workspace with the same contents (and local servers already on this computer), so a
- * second import leaves them out. Edited files are offered again.
+ * Marks items already in the workspace with the same contents (and local servers already on this computer with the
+ * same configuration), so a second import leaves them out. Edited files and changed servers are offered again.
  */
 export function markImported(
   apps: LocalSetupApp[],
   ledger: Record<string, string>,
   resolve: (id: string) => ResolvedLocalSetupItem | null,
-  localServerItemIds: ReadonlySet<string>
+  localServers: ReadonlyMap<string, string>
 ): LocalSetupApp[] {
   return apps.map((entry) => ({
     ...entry,
     items: entry.items.map((item) => {
-      if (item.kind === 'mcp_local') return localServerItemIds.has(item.id) ? { ...item, imported: true } : item
-      const digest = ledger[item.id]
+      const digest = item.kind === 'mcp_local' ? localServers.get(item.id) : ledger[item.id]
       const resolved = digest ? resolve(item.id) : null
       return resolved && importDigest(resolved) === digest ? { ...item, imported: true } : item
     })
@@ -181,7 +184,7 @@ class LocalSetupService {
     const localMcp = privateThreadsService.supportsLocalMcp()
     const found = scanLocalSetup(home, process.platform, { localMcp })
     const apps = input?.workspaceId
-      ? markImported(found, readLedger()[input.workspaceId] ?? {}, (id) => resolveLocalSetupItem(home, id), this.localServerItemIds(localMcp))
+      ? markImported(found, readLedger()[input.workspaceId] ?? {}, (id) => resolveLocalSetupItem(home, id), this.localServerDigests(localMcp))
       : found
     return {
       apps,
@@ -208,7 +211,8 @@ class LocalSetupService {
         // The same contents were already imported into this workspace: nothing to send. Local servers update in place.
         if (item.kind === 'mcp_local' || ledger[input.workspaceId]?.[id] !== digest) {
           await importItem(item, input.workspaceId, input.agentDefaults, postWithAppSession, saveLocalServer)
-          if (item.kind !== 'mcp_local') writeLedger({ ...ledger, [input.workspaceId]: { ...ledger[input.workspaceId], [id]: digest } })
+          const bucket = item.kind === 'mcp_local' ? LOCAL_SERVERS : input.workspaceId
+          writeLedger({ ...ledger, [bucket]: { ...ledger[bucket], [id]: digest } })
         }
         result.imported.push({ id, kind: item.kind, name: item.name })
       } catch (error) {
@@ -218,9 +222,11 @@ class LocalSetupService {
     return result
   }
 
-  private localServerItemIds(supported: boolean): Set<string> {
-    if (!supported) return new Set()
-    return new Set(privateThreadsService.mcpImportedItemIds())
+  /** Imported local servers still on this computer, with the digest of the configuration they were imported with. */
+  private localServerDigests(supported: boolean): Map<string, string> {
+    if (!supported) return new Map()
+    const recorded = readLedger()[LOCAL_SERVERS] ?? {}
+    return new Map(privateThreadsService.mcpImportedItemIds().flatMap((id) => recorded[id] ? [[id, recorded[id]] as const] : []))
   }
 
   async useShellKey(input: Input<'localSetup.useShellKey'>): Promise<LocalModelKeys> {

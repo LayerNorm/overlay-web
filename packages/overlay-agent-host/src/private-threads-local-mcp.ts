@@ -165,8 +165,12 @@ export class LocalMcpServers {
       stderr.push(text)
       while (stderr.join('').length > STDERR_TAIL) stderr.shift()
     }))
-    const connection = await untilAborted(connect(server, signal), signal).catch((error: unknown) => {
-      throw signal.aborted ? new Error('it did not answer within a minute') : error
+    const attempt = connect(server, signal)
+    const connection = await untilAborted(attempt, signal).catch((error: unknown) => {
+      if (!signal.aborted) throw error
+      // A connection that finishes after the deadline belongs to no entry, so nothing else would ever stop it.
+      attempt.then(late => late.close().catch(() => undefined), () => undefined)
+      throw new Error('it did not answer within a minute')
     })
     this.options.log?.(`Local MCP server ${server.name} started with ${Object.keys(connection.tools).length} tools.`)
     return connection
@@ -183,6 +187,9 @@ async function connectStdio(server: LocalMcpServer, signal: AbortSignal, onStder
     stderr: 'pipe',
   })
   transport.stderr?.on('data', (chunk: Buffer) => onStderr(chunk.toString()))
+  // Past the deadline the process is stopped, so a slow tool listing fails instead of finishing unseen.
+  const stopAtDeadline = () => void transport.close().catch(() => undefined)
+  signal.addEventListener('abort', stopAtDeadline, { once: true })
   let client: MCPClient | null = null
   try {
     client = await createMCPClient({
@@ -192,12 +199,15 @@ async function connectStdio(server: LocalMcpServer, signal: AbortSignal, onStder
     })
     const connected = client
     const tools = await connected.tools() as ToolSet
+    signal.throwIfAborted()
+    signal.removeEventListener('abort', stopAtDeadline)
     return {
       tools,
       ...(connected.instructions?.trim() ? { instructions: connected.instructions.trim() } : {}),
       close: async () => { await connected.close().catch(() => undefined); await transport.close().catch(() => undefined) },
     }
   } catch (error) {
+    signal.removeEventListener('abort', stopAtDeadline)
     await client?.close().catch(() => undefined)
     await transport.close().catch(() => undefined)
     throw error

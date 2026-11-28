@@ -46,7 +46,9 @@ export function useLocalSetupImport(workspaceId: string | null | undefined) {
   const rescan = useCallback(async () => {
     if (!bridge || !workspaceId) return
     try {
+      // Desktop releases before Settings → Import take no argument and refuse one; they scan without import marks.
       const value = await bridge.call('localSetup.scan', { workspaceId })
+        .catch(() => bridge.call('localSetup.scan', undefined))
       setScan(value)
       setPicked(new Set(value.apps.flatMap((app) => app.items.filter(startsTicked).map((item) => item.id))))
     } catch {
