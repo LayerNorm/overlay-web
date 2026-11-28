@@ -6,6 +6,7 @@ import { ACTIVE_AGENT_RUN_STATUSES } from '@/shared/agents/agent-run'
 import { compactTranscriptSnapshot } from '@/shared/chat/compact-transcript-snapshot'
 import { withTranscriptPartIds } from '@/shared/chat/transcript-part-identity'
 import { joinStepTranscripts } from '@/shared/chat/step-text-join'
+import { isPublicStreamConversation } from './publicStreamEligibility'
 
 const ACTIVE = new Set<string>(ACTIVE_AGENT_RUN_STATUSES)
 type Metadata = Pick<HarnessSnapshot, 'workflowRunId' | 'status' | 'policy' | 'executionGeneration'>
@@ -35,24 +36,18 @@ async function nativeDelivery(ctx: MutationCtx, run: Doc<'harnessRuns'>, metadat
     || (delivery.mode === 'chat' && user.turnId !== delivery.turnId)
     || (message.nativeRunId !== undefined && message.nativeRunId !== delivery._id)) return null
   // Versioned runs settle every step here, writing the checkpoint that retires the step's
-  // live stream. A chat this skips would keep its live text on screen next to the step text
-  // the legacy progress writer saves, so every enrolled chat kind must be accepted:
-  // personal and workspace-scope chats (both owner-only), automations, rooms and work.
+  // live stream. It accepts exactly the conversations `appendPublicStream` accepts: a
+  // conversation that got live text but no checkpoint would lose each step's text as
+  // soon as the next call starts streaming.
   if (metadata.policy.publicStreamVersion === 1) {
+    if (!await isPublicStreamConversation(ctx, {
+      conversation, actorUserId: run.actorUserId, workspaceId: metadata.policy.workspaceId, mode: delivery.mode,
+    })) return null
     if (delivery.mode === 'room' || delivery.mode === 'work') {
       if (!delivery.agentPrincipalId || message.authorKind !== 'agent'
         || message.authorPrincipalId !== delivery.agentPrincipalId) return null
-    } else {
-      if (conversation.userId !== run.actorUserId || message.userId !== run.actorUserId
-        || message.authorKind === 'agent' || message.authorPrincipalId !== undefined) return null
-      if (conversation.isAutomation) {
-        const automation = await ctx.db.query('automations')
-          .withIndex('by_conversationId_deletedAt', q => q.eq('conversationId', conversation._id).eq('deletedAt', undefined)).first()
-        if (!automation) return null
-      } else if (!['personal', 'workspace'].includes(conversation.scope ?? 'personal')
-        || (conversation.conversationType ?? 'personal') !== 'personal' || conversation.agentId
-        || conversation.externalPlatform || conversation.surfaceBindingId) return null
-    }
+    } else if (message.userId !== run.actorUserId
+      || message.authorKind === 'agent' || message.authorPrincipalId !== undefined) return null
     return { delivery, message }
   }
   if (metadata.policy.publicProgressVersion !== 1 || delivery.mode === 'room'

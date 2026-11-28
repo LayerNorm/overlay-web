@@ -216,9 +216,19 @@ each segment is at most 8 KiB UTF-8 and visible text is capped at 160,000
 UTF-16 code units without splitting a surrogate pair. Truncation is explicit.
 Settling a transcript step atomically writes its checkpoint identity
 `(runId, generation, receiptId, invocation)` and retires that invocation's
-active segments. Every enrolled chat kind must settle through this projection
-(personal and owner-only workspace-scope chats, automations, rooms and work);
-a kind it skips keeps live text on screen beside the legacy progress copy.
+active segments. Admission, `appendPublicStream` and this projection all ask
+`isPublicStreamConversation` (`convex/lib/publicStreamEligibility.ts`), so a
+conversation that receives live text always receives the checkpoint that retires
+it; without the checkpoint, each step's text would vanish as the next model call
+started streaming. The rule: the conversation is live, belongs to the run's
+workspace and is not a mirrored surface (`externalPlatform` or
+`surfaceBindingId`); chat replies also need the actor to own it, and a conversation
+flagged `isAutomation` needs a bound automation. Personal and workspace-scope
+chats, agent-linked chats, bound automations, rooms and work qualify. Admission
+drops `publicStreamVersion` before computing the admission identity when the rule
+fails, so refused conversations run on the legacy path and retries stay
+idempotent. Chat and work replies are only admitted into personal-type
+conversations; DMs, channels and agent threads stream as room replies.
 Only chat deliveries share one turn id between the person's message and the reply;
 agent threads (room and work) give the person's message its own turn id, so the
 projection matches only the reply's turn there. Requiring both once skipped every
