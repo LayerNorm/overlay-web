@@ -325,7 +325,7 @@ const CONTROLS = [
 
 export function ControlSection() {
   return (
-    <section className="sec tight">
+    <section className="sec tight" id="control-plane">
       <div className="split">
         <h2 className="h2">Stay in control<br /><span className="dim">of every agent on the team</span></h2>
         <div className="ctrl">
