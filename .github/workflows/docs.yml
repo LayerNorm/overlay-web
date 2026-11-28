@@ -33,4 +33,4 @@ jobs:
           node-version: 22
 
       - name: Run docs checks
-        run: npm run docs:check
+        run: bun run docs:check

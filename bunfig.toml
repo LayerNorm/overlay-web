@@ -1,0 +1,7 @@
+[install]
+# One install for web, packages and every app. Isolated layout: each package sees only
+# the dependencies it declares, so mobile keeps Expo's pinned React next to web's.
+linker = "isolated"
+# Supply-chain guard carried over from .npmrc min-release-age=7: skip versions
+# published less than 7 days ago.
+minimumReleaseAge = 604800

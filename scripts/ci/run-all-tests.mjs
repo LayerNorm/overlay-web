@@ -135,7 +135,7 @@ function classify(files) {
     if (packageMatch) {
       // Published packages build before testing (their suites import `dist`).
       const packageDir = `packages/${packageMatch[1]}`
-      if (readPackageTestScript(packageDir)?.includes('npm run build')) {
+      if (readPackageTestScript(packageDir)?.includes('bun run build')) {
         add(`package:${packageMatch[1]}`, { kind: 'npm-test', cwd: packageDir }, file)
         continue
       }
@@ -175,7 +175,7 @@ function commandFor(group) {
   if (group.kind === 'npm-test') {
     // Build once, then execute only this group's selected files. Package globs
     // would pull opt-in live integration files back into ordinary CI.
-    const build = spawnSync('npm', ['run', 'build', '--silent'], { cwd: path.join(root, group.cwd), env, stdio: 'inherit' })
+    const build = spawnSync('bun', ['run', '--silent', 'build'], { cwd: path.join(root, group.cwd), env, stdio: 'inherit' })
     if (build.status !== 0) throw new Error(`Package test build failed: ${group.cwd}`)
     return { cmd: 'npx', argv: ['tsx', '--test', ...group.files.map(file => path.relative(group.cwd, file))], env }
   }

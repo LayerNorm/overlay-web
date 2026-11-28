@@ -6,7 +6,7 @@ import test from 'node:test'
 import { desktopWebShellViolations } from './desktop-web-shell-boundary.mjs'
 
 const BRIDGE_DEPENDENCY = {
-  '@overlay/desktop-bridge': 'file:../../packages/overlay-desktop-bridge',
+  '@overlay/desktop-bridge': 'workspace:*',
 }
 
 function fixture() {

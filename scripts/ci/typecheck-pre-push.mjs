@@ -19,20 +19,20 @@ function git(args) {
 const range = args[rangeIndex + 1];
 const changed = git(['diff', '--name-only', '-z', range]).split('\0').filter(Boolean);
 const isSource = file => /(?:\.[cm]?[jt]sx?|\.json)$/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
-const rootRelevant = file => /^(?:src|convex|packages)\//.test(file) && (isSource(file) || /(?:^|\/)(?:package(?:-lock)?\.json|tsconfig[^/]*\.json)$/.test(file))
-  || /^(?:package(?:-lock)?\.json|tsconfig[^/]*\.json|next\.config\.[cm]?[jt]s|next-env\.d\.ts|\.npmrc)$/.test(file)
+const rootRelevant = file => /^(?:src|convex|packages)\//.test(file) && (isSource(file) || /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json)$/.test(file))
+  || /^(?:package\.json|bun\.lock|bunfig\.toml|tsconfig[^/]*\.json|next\.config\.[cm]?[jt]s|next-env\.d\.ts)$/.test(file)
   || file === 'overlay-desktop' || file === '.gitmodules'
   || /^scripts\/ci\/(?:check-|typecheck)/.test(file) && !/\.test\.[cm]?[jt]sx?$/.test(file);
-const adminRelevant = file => /^apps\/admin\//.test(file) && (isSource(file) || /(?:^|\/)(?:package(?:-lock)?\.json|tsconfig[^/]*\.json)$/.test(file));
+const adminRelevant = file => /^apps\/admin\//.test(file) && (isSource(file) || /(?:^|\/)(?:package\.json|tsconfig[^/]*\.json)$/.test(file));
 const web = changed.some(rootRelevant);
-const admin = changed.some(adminRelevant) || web && changed.some(file => /^(?:packages\/|package(?:-lock)?\.json$)/.test(file));
+const admin = changed.some(adminRelevant) || web && changed.some(file => /^(?:packages\/|package\.json$|bun\.lock$)/.test(file));
 if (!web && !admin) {
   console.log('pre-push: no application typecheck inputs changed');
   process.exit(0);
 }
 const commands = [];
-if (web) commands.push(['node', ['node_modules/next/dist/bin/next', 'typegen']], ['npm', ['run', 'typecheck']]);
-if (admin) commands.push(['node', ['node_modules/next/dist/bin/next', 'typegen', 'apps/admin']], ['npm', ['run', 'admin:typecheck']]);
+if (web) commands.push(['node', ['node_modules/next/dist/bin/next', 'typegen']], ['bun', ['run', 'typecheck']]);
+if (admin) commands.push(['node', ['node_modules/next/dist/bin/next', 'typegen', 'apps/admin']], ['bun', ['run', 'admin:typecheck']]);
 if (args.includes('--plan')) {
   console.log(JSON.stringify({ web, admin, commands }));
   process.exit(0);

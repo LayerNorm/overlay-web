@@ -7,16 +7,16 @@ Use an Apple Silicon Mac and Node.js 22 or newer:
 
 ```bash
 cp .env.example .env
-npm ci
-npm run dev
+bun install --frozen-lockfile
+bun run dev
 ```
 
 Before opening a pull request:
 
 ```bash
-npm run lint
-npm test
-npm run build
+bun run lint
+bun run test
+bun run build
 ```
 
 Don't commit secrets, certificates, downloaded models, build output or user data.

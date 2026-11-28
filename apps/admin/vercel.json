@@ -1,5 +1,6 @@
 {
   "framework": "nextjs",
+  "installCommand": "command -v bun >/dev/null || npm install -g bun@1.4.5; cd ../.. && bun install --frozen-lockfile",
   "git": {
     "deploymentEnabled": {
       "*": false,

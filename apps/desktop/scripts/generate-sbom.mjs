@@ -1,13 +1,18 @@
 import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
+import { productionPackages, readBunLock } from '../../../scripts/ci/bun-lock.mjs'
 
 const root = path.resolve(import.meta.dirname, '..')
 const dist = path.join(root, 'dist')
 fs.mkdirSync(dist, { recursive: true })
 
-const lockText = fs.readFileSync(path.join(root, 'package-lock.json'), 'utf8')
-const lock = JSON.parse(lockText)
+// The app installs from the monorepo's bun.lock; its components are the desktop
+// workspace's dependencies (development-only ones flagged), then the Agent Host
+// bundle's own npm lockfile.
+const repositoryRoot = path.resolve(root, '../..')
+const lockText = fs.readFileSync(path.join(repositoryRoot, 'bun.lock'), 'utf8')
+const lock = readBunLock(repositoryRoot)
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))
 const lockDigest = createHash('sha256').update(lockText).digest('hex')
 const serial = [
@@ -37,42 +42,54 @@ const bundledNode = JSON.parse(fs.readFileSync(path.join(root, 'native-artifacts
   (artifact) => artifact.path === 'agent-host-bundle/runtime/node'
 )
 const nodeVersion = /\/v(\d+\.\d+\.\d+)\//.exec(bundledNode.source)[1]
-const lockedEntries = [
-  ...Object.entries(lock.packages ?? {}),
-  ...Object.entries(bundleLock.packages ?? {}).map(([packagePath, entry]) => [
-    packagePath && `agent-host-bundle/${packagePath}`,
-    entry
-  ])
-]
+const integrityHash = (integrity) =>
+  typeof integrity === 'string' && integrity.startsWith('sha512-')
+    ? [{ alg: 'SHA-512', content: Buffer.from(integrity.slice('sha512-'.length), 'base64').toString('hex') }]
+    : undefined
 
-const components = lockedEntries
+const workspaceComponents = [...productionPackages(lock, ['apps/desktop'], { includeDev: true }).values()]
+  .filter((entry) => !entry.name.startsWith('@overlay/'))
+  .map((entry) => {
+    const component = {
+      type: 'library',
+      'bom-ref': `npm:${entry.name}@${entry.version}`,
+      name: entry.name,
+      version: entry.version,
+      purl: packageUrl(entry.name, entry.version),
+      properties: [
+        { name: 'overlay:lockfile', value: 'bun.lock' },
+        { name: 'overlay:development-only', value: String(entry.dev) }
+      ]
+    }
+    const hashes = integrityHash(entry.integrity)
+    if (hashes) component.hashes = hashes
+    return component
+  })
+
+const bundleComponents = Object.entries(bundleLock.packages ?? {})
   .filter(([packagePath, entry]) => packagePath && entry?.version)
   .map(([packagePath, entry]) => {
     const name = entry.name || packageNameFromPath(packagePath)
     const component = {
       type: 'library',
-      'bom-ref': `npm:${packagePath}`,
+      'bom-ref': `npm:agent-host-bundle/${packagePath}`,
       name,
       version: entry.version,
       purl: packageUrl(name, entry.version),
       properties: [
-        { name: 'overlay:lockfile-path', value: packagePath },
+        { name: 'overlay:lockfile-path', value: `agent-host-bundle/${packagePath}` },
         { name: 'overlay:development-only', value: String(entry.dev === true) }
       ]
     }
     if (typeof entry.resolved === 'string' && /^https:\/\//.test(entry.resolved)) {
       component.externalReferences = [{ type: 'distribution', url: entry.resolved }]
     }
-    if (typeof entry.integrity === 'string' && entry.integrity.startsWith('sha512-')) {
-      component.hashes = [
-        {
-          alg: 'SHA-512',
-          content: Buffer.from(entry.integrity.slice('sha512-'.length), 'base64').toString('hex')
-        }
-      ]
-    }
+    const hashes = integrityHash(entry.integrity)
+    if (hashes) component.hashes = hashes
     return component
   })
+
+const components = [...workspaceComponents, ...bundleComponents]
   .concat({
     type: 'application',
     'bom-ref': 'agent-host-bundle/runtime/node',
@@ -108,7 +125,7 @@ const sbom = JSON.stringify({
       purl: packageUrl(packageJson.name, packageJson.version)
     },
     properties: [
-      { name: 'overlay:source', value: 'package-lock.json' },
+      { name: 'overlay:source', value: 'bun.lock' },
       { name: 'overlay:lockfile-sha256', value: lockDigest }
     ]
   },

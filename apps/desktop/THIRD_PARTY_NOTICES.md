@@ -4,8 +4,9 @@ Overlay Desktop includes third-party JavaScript packages, native modules,
 frameworks, models, and helper binaries. Each component remains subject
 to its own license and notice requirements.
 
-The authoritative JavaScript dependency set is `package-lock.json`. Run
-`npm run license:check` and generate the CycloneDX SBOM before a release. The
+The authoritative JavaScript dependency set is the desktop workspace in the
+repository's `bun.lock`. Run `bun run license:check` and generate the CycloneDX
+SBOM before a release. The
 check does not replace legal review of the final packaged artifact.
 
 Important native and model components include:
@@ -31,7 +32,7 @@ Important native and model components include:
 - Native npm dependencies — licenses recorded in their package metadata and the
   generated SBOM.
 
-`npm run check:native-artifacts` verifies hashes, architecture, build records,
+`bun run check:native-artifacts` verifies hashes, architecture, build records,
 licenses, source records, and absence of private workstation paths for every
 bundled executable. Official release evidence must also preserve the generated
 SBOM and model revision records. A locally present binary is not sufficient

@@ -26,8 +26,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@overlay/app-core": "file:../overlay-app-core",
-    "@overlay/ui": "file:../overlay-ui"
+    "@overlay/app-core": "workspace:*",
+    "@overlay/ui": "workspace:*"
   },
   "peerDependencies": {
     "@tiptap/core": "^3.20.1",

@@ -311,8 +311,8 @@ async function checkPublicationReadiness(failures: string[]) {
   if (!/Node\.js 22 or newer/i.test(quickstart)) {
     failures.push('docs/developer/contribute/run-locally.mdx must require Node.js 22 or newer')
   }
-  if (!/npm 11 or newer/i.test(quickstart)) {
-    failures.push('docs/developer/contribute/run-locally.mdx must require npm 11 or newer')
+  if (!/Bun 1\.4\.5 or newer/i.test(quickstart)) {
+    failures.push('docs/developer/contribute/run-locally.mdx must require Bun 1.4.5 or newer')
   }
 
   const forbiddenCommandFragments = [
@@ -340,10 +340,10 @@ async function checkDocumentedCommands(failures: string[]) {
 
   for (const file of markdownFiles) {
     const text = await readFile(file, 'utf8')
-    for (const match of text.matchAll(/\bnpm run ([A-Za-z0-9:_-]+)/g)) {
+    for (const match of text.matchAll(/\b(?:npm|bun) run ([A-Za-z0-9:_-]+)/g)) {
       const script = match[1]
       if (script && !packageScripts.has(script)) {
-        failures.push(`${relative(file)} references missing package script npm run ${script}`)
+        failures.push(`${relative(file)} references missing package script ${match[0]}`)
       }
     }
 
