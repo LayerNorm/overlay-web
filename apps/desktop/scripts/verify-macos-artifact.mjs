@@ -115,7 +115,8 @@ if (appBundle) {
     ['resources/ax-helper', 'resources/ax-helper'],
     ['whisperkit-bundle/whisperkit-cli', 'whisperkit/whisperkit-cli'],
     ['parakeet-bundle/parakeet-cli', 'parakeet/parakeet-cli'],
-    ['agent-host-bundle/runtime/node', 'agent-host/node']
+    ['agent-host-bundle/runtime/node', 'agent-host/node'],
+    ['agent-host-bundle/runtime/cli-proxy-api', 'agent-host/cli-proxy-api']
   ])
   const hostCli = 'agent-host/overlay-agent-host.mjs'
   if (!fs.existsSync(path.join(appBundle, 'Contents', 'Resources', hostCli))) {

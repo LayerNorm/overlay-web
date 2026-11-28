@@ -43,6 +43,31 @@ test('sign-out outside the shell checks the capability and awaits native cleanup
 })
 
 
+test('private turns name a key provider, a plan or Overlay, and never carry a secret from the page', () => {
+  const schema = methodSchemas['localThreads.send']
+  const base = {
+    owner: { userId: 'u', workspaceId: 'w' }, threadId: 'private_abc12345', turnId: 't',
+    messages: [{ id: 'm', role: 'user', parts: [] }], agent: { name: 'Atlas' }, approvalMode: 'ask',
+  }
+  for (const provider of ['anthropic', 'openrouter', 'claude', 'chatgpt', 'overlay']) {
+    assert.equal(schema.safeParse({ ...base, model: { provider, modelId: 'm' } }).success, true, provider)
+  }
+  assert.equal(schema.safeParse({ ...base, model: { provider: 'cursor', modelId: 'm' } }).success, false)
+  assert.equal(schema.safeParse({ ...base, model: { provider: 'claude', modelId: 'm', apiKey: 'sk-test-1234' } }).success, false)
+  assert.equal(schema.safeParse({ ...base, model: { provider: 'overlay', modelId: 'm', token: 'ovmcu_m_x' } }).success, false)
+})
+
+test('plans are signed in by provider name only', () => {
+  assert.equal(methodSchemas['localThreads.signIn'].safeParse({ provider: 'claude' }).success, true)
+  assert.equal(methodSchemas['localThreads.signIn'].safeParse({ provider: 'chatgpt' }).success, true)
+  assert.equal(methodSchemas['localThreads.signIn'].safeParse({ provider: 'anthropic' }).success, false)
+  assert.equal(methodSchemas['localThreads.signIn'].safeParse({ provider: 'claude', token: 'x' }).success, false)
+  assert.equal(methodSchemas['localThreads.signOut'].safeParse({ provider: 'overlay' }).success, false)
+  assert.equal(methodSchemas['localThreads.models'].safeParse({ provider: 'chatgpt' }).success, true)
+  assert.equal(methodSchemas['localThreads.models'].safeParse({ provider: 'overlay' }).success, false)
+  assert.equal(methodSchemas['localThreads.plans'].safeParse(undefined).success, true)
+})
+
 test('microphone preferences are additive and bounded', () => {
   const schema = methodSchemas['transcription.configure']
   assert.equal(schema.safeParse({ model: 'cloud' }).success, true)

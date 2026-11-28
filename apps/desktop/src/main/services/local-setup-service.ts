@@ -44,7 +44,7 @@ export function shellKeysFrom(environment: Record<string, string>): Array<{ prov
   })
 }
 
-/** Whether Claude Code and Codex are signed in with a plan (not an API key), for using those plans later. */
+/** Whether Claude Code and Codex are signed in with a plan (not an API key): a hint to sign in to that plan for private threads. */
 export function subscriptionSignIns(home: string): LocalSetupScan['subscriptions'] {
   const json = (path: string): Record<string, unknown> | null => {
     try { return existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) as Record<string, unknown> : null } catch { return null }

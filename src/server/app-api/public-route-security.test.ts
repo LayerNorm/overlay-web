@@ -56,6 +56,8 @@ const NON_V1_ROUTE_INVENTORY: Record<string, string[]> = {
   '/api/oauth/register': ['GET', 'OPTIONS', 'POST'],
   '/api/oauth/token': ['GET', 'OPTIONS', 'POST'],
   '/api/portal': ['POST'],
+  // Scoped bearer-token model relay for private threads on Overlay Desktop — not session auth.
+  '/api/private-threads/model': ['POST'],
   '/api/security/csp-report': ['POST'],
   '/api/share/file/[token]': ['GET'],
   '/api/subscription': ['GET'],

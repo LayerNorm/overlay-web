@@ -9,7 +9,7 @@ inputs, approval rules and browser result text (`computer-tools.ts`) and context
 Install the matching protocol and host versions together:
 
 ```sh
-npm install @layernorm/overlay-agent-bridge-protocol@0.7.0 @layernorm/overlay-agent-host@0.7.0
+npm install @layernorm/overlay-agent-bridge-protocol@0.8.0 @layernorm/overlay-agent-host@0.8.0
 ```
 
 See the repository's `internal/develop/local-computer.md` for the trust and compatibility policy.

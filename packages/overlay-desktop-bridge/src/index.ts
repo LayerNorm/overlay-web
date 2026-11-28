@@ -43,6 +43,16 @@ export const localModelProviders = [
   "openrouter",
 ] as const;
 export type LocalModelProvider = (typeof localModelProviders)[number];
+/** Plans a person signs in to on this computer (Claude, ChatGPT), used through the desktop's local CLIProxyAPI. */
+export const localPlanProviders = ["claude", "chatgpt"] as const;
+export type LocalPlanProvider = (typeof localPlanProviders)[number];
+/** How a private turn calls its model: a key, a plan, or Overlay's metered models (paid workspaces). */
+export const localModelSources = [
+  ...localModelProviders,
+  ...localPlanProviders,
+  "overlay",
+] as const;
+export type LocalModelSource = (typeof localModelSources)[number];
 const localFolder = z.string().trim().min(1).max(4096).startsWith("/");
 export const methodSchemas = {
   handshake: empty,
@@ -151,9 +161,10 @@ export const methodSchemas = {
         .array(z.record(z.string(), z.unknown()))
         .min(1)
         .max(2000),
+      /** The desktop adds the key, the plan proxy's secret or a token for Overlay's models; the page never holds them. */
       model: z
         .object({
-          provider: z.enum(localModelProviders),
+          provider: z.enum(localModelSources),
           modelId: z.string().trim().min(1).max(200),
         })
         .strict(),
@@ -188,7 +199,18 @@ export const methodSchemas = {
     })
     .strict(),
   "localThreads.models": z
-    .object({ provider: z.enum(localModelProviders) })
+    .object({ provider: z.enum([...localModelProviders, ...localPlanProviders]) })
+    .strict(),
+  /** Which plans this computer is signed in to for private threads. Tokens never leave the desktop app. */
+  "localThreads.plans": empty,
+  /** Opens the provider's sign-in in the browser and resolves once it finishes; tokens go to the system keychain. */
+  "localThreads.signIn": z
+    .object({ provider: z.enum(localPlanProviders) })
+    .strict(),
+  /** Stops waiting for a sign-in started with `localThreads.signIn`. */
+  "localThreads.cancelSignIn": empty,
+  "localThreads.signOut": z
+    .object({ provider: z.enum(localPlanProviders) })
     .strict(),
   /**
    * Names and counts of the AI tools' settings on this computer (Claude Code, Codex…); never contents or secrets.
@@ -283,6 +305,14 @@ export type LocalThreadMessage = {
 };
 export type LocalThreadTurnState = "running" | "finished" | "stopped" | "error";
 export type LocalModelKeys = Record<LocalModelProvider, boolean>;
+/** A plan on this computer: signed in or not, and the account's email when the provider gives one. */
+export type LocalPlanStatus = { signedIn: boolean; account: string | null };
+export type LocalPlans = {
+  /** False when this copy of Overlay can't run plans (an older app or Agent Host). */
+  available: boolean;
+  /** Whether this copy of Overlay can run Overlay's metered models in private threads (paid workspaces). */
+  overlayModels: boolean;
+} & Record<LocalPlanProvider, LocalPlanStatus>;
 /** What an AI tool keeps on this computer, and what it becomes in Overlay when imported. */
 export type LocalSetupItemKind =
   | "instructions"
@@ -312,7 +342,7 @@ export type LocalSetupScan = {
   apps: LocalSetupApp[];
   /** Model keys set in the login shell's environment; only the variable name and the key's last four characters. */
   shellKeys: { provider: LocalModelProvider; variable: string; hint: string }[];
-  /** Model plans this computer is signed in to, for using them in private threads later. */
+  /** Whether Claude Code and Codex use a plan on this computer: a hint to sign in to that plan for private threads. */
   subscriptions: { claude: boolean; chatgpt: boolean };
 };
 export type LocalSetupImportResult = {
@@ -381,6 +411,10 @@ export type Results = {
   "localThreads.keys": LocalModelKeys;
   "localThreads.setKey": LocalModelKeys;
   "localThreads.models": { models: { id: string; name: string }[] };
+  "localThreads.plans": LocalPlans;
+  "localThreads.signIn": LocalPlans;
+  "localThreads.cancelSignIn": void;
+  "localThreads.signOut": LocalPlans;
   "localSetup.scan": LocalSetupScan;
   "localSetup.import": LocalSetupImportResult;
   "localSetup.useShellKey": LocalModelKeys;

@@ -5,10 +5,11 @@ Host 0.6.0 published to npm, and shipped in Overlay Desktop 0.4.0 (2026-11-21).
 Free tier approved (Decision 4, 2026-11-24) and the paid-first plan amended.
 Phase 1–2 gaps closed and Phase 3 merged (PR 618, 2026-11-25): live on web, Convex
 production deployed, Agent Host 0.7.0 published to npm, and shipped in Overlay Desktop 0.5.0
-(2026-11-26). Phases 4–5 not started. Living doc: `internal/develop/private-threads.md`.
+(2026-11-26). Phase 4 (plans and Overlay-billed models) built in a draft PR (2026-11-27): not merged, not released
+(it needs Agent Host 0.8.0 published and a desktop release), not accepted. Phase 5 not started. Living doc:
+`internal/develop/private-threads.md`.
 
-Repos: `LayerNorm/overlay-desktop`, `LayerNorm/overlay-web` (Agent Host package,
-web UI).
+Repository: `LayerNorm/overlay` (`apps/desktop`, `packages/overlay-agent-host`, web UI).
 
 ## Problem
 
@@ -79,11 +80,12 @@ Non-goals: replacing the cloud harness, durable or scheduled local runs
      macOS Keychain through Electron `safeStorage`, called directly from the
      computer. Free to Overlay.
    - **Subscriptions through a local CLIProxyAPI.** The desktop runs its own
-     CLIProxyAPI on localhost; the person signs in to ChatGPT/Codex, Claude
-     etc. on the computer and the refresh tokens stay in the Keychain, never in
-     Vault. Free to Overlay. Before each provider ships: a terms review for
-     third-party use, and CLIProxyAPI (a Go binary) is bundled, signed and
-     notarized with the app like Node.js.
+     CLIProxyAPI on localhost; the person signs in to ChatGPT (Codex) and Claude
+     on the computer and the refresh tokens stay in the Keychain, never in
+     Vault. Free to Overlay. CLIProxyAPI (a Go binary) is bundled, signed and
+     notarized with the app like Node.js. The owner waived the terms review on
+     2026-11-27: using a person's Claude and ChatGPT plans is allowed and ships
+     fully, not behind a flag.
    - **Overlay-billed models**, yes. The loop still runs locally; each model call
      goes to Overlay's metered inference endpoint and is charged to the
      workspace. Those calls pass through Overlay's servers in transit but are
@@ -144,10 +146,11 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
   can read it from any device. This can't be undone.") and then turns it into a
   synced thread on this computer.
 - No model picker in the composer: a private thread runs the agent's own model
-  with a key on this computer, the provider's key or OpenRouter's
+  from the first source that has it: a signed-in Claude or ChatGPT plan, the
+  provider's key or OpenRouter's, then Overlay's models in a paid workspace
   (`src/shared/agents/private-model.ts`). Without one, a note above the message
-  box says which key to add, and Settings → Desktop → Model keys adds it. Local
-  subscriptions and Overlay-billed models come in Phase 4.
+  box says what to set up, and Settings → Desktop → Plans and Model keys set it
+  up.
 - Tool rows, approvals and Stop look the same as in synced threads.
 - Quitting the app stops a running thread that is not synced; the transcript is
   kept up to the last step, and the person can say "continue".
@@ -161,7 +164,7 @@ Mockup: `internal/plans/mockups/private-threads.html` (feature `private-threads`
 | 1: Private runtime in the Agent Host | Merged; Agent Host 0.6.0 published; shipped in desktop 0.4.0 |
 | 2: Bridge and UI | Merged and live on web; desktop 0.4.0 released; tested end to end in a desktop dev build against the PR preview, not yet in the released app |
 | 3: Overlay tools and free tier | Merged (PR 618) and live on web; Convex production deployed; Agent Host 0.7.0 published; shipped in desktop 0.5.0 (signed, notarized, published 2026-11-26). QA'd end to end in a desktop dev build against the PR preview (15/15); the released 0.5.0 app has not been run against production yet. Not built: analytics, the allowance usage display and the export diagnostics action |
-| 4: Local subscriptions and Overlay-billed models | Not started |
+| 4: Local subscriptions and Overlay-billed models | Built in a draft PR (2026-11-27); not merged, released or accepted. Needs Agent Host 0.8.0 published and the desktop's host pin and web enrollment bumped to it, then a signed, notarized desktop release. Real sign-in against Claude and ChatGPT and a paid Overlay-models turn are untested |
 | 5: Sync to cloud | Not started |
 
 ### Phase 0: Decisions and mockup
@@ -235,10 +238,23 @@ Overlay received tool calls and token requests but no transcript.
 ### Phase 4: Local subscriptions and Overlay-billed models
 
 - Bundle, sign and notarize CLIProxyAPI in the desktop; run it on localhost
-  for the host only. Per provider, after the terms review: local sign-in and
-  Keychain token storage in Settings → Desktop.
+  for the host only. Per provider: local sign-in and Keychain token storage in
+  Settings → Desktop (terms review waived by the owner, 2026-11-27).
 - Overlay-billed models through the metered inference endpoint, charged to the
   workspace, with the same budget checks as cloud runs.
+
+Built (draft PR, 2026-11-27): CLIProxyAPI 8.1.7 pinned by archive and binary
+checksum (arm64 and x64) in `build-agent-host-bundle.mjs` and
+`native-artifacts.json`, packaged beside Node.js so electron-builder signs and
+notarizes it; the desktop's plan proxy (loopback, random port, per-launch keys,
+Keychain tokens, sign-in with a loopback callback listener, sign-out);
+`localThreads.plans`, `signIn`, `cancelSignIn`, `signOut`; Settings → Desktop →
+Plans and onboarding step 4; Agent Host 0.8.0 turn models for plans and
+Overlay's models; `POST /api/v1/private-threads/model-access` and the metered
+relay `POST /api/private-threads/model` (paid only, 2% check before, usage
+charged after, nothing stored). The model source is chosen automatically:
+plan, key, then Overlay's models. Not done: publishing Agent Host 0.8.0,
+bumping the desktop pin, a desktop release, and QA with real accounts.
 
 ### Phase 5: Sync to cloud
 

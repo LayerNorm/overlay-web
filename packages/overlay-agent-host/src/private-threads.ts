@@ -14,7 +14,8 @@ import {
   type UIMessageChunk,
 } from 'ai'
 import { LocalToolExecutor } from './local-tools.js'
-import { listProviderModels } from './private-threads-models.js'
+import { listPlanModels, listProviderModels } from './private-threads-models.js'
+import { createOverlayRelayModel } from './private-threads-overlay-model.js'
 import {
   contextWindowFor,
   createContextCompaction,
@@ -30,8 +31,8 @@ import {
   privateRequestSchema,
   type ParsedPrivateRequest,
   type PrivateEvent,
-  type PrivateModelProvider,
   type PrivateRequest,
+  type PrivateTurnModel,
   type PrivateResults,
   type PrivateUIMessage,
 } from './private-threads-protocol.js'
@@ -47,9 +48,10 @@ export type PrivateThreadServiceOptions = {
   /** Holds terminal sessions and the browser profile of private runs. */
   stateDirectory: string
   emit: (event: PrivateEvent) => void
-  /** Tests replace the model; production builds it from the person's key. */
-  createModel?: (provider: PrivateModelProvider, modelId: string, apiKey: string) => LanguageModel
+  /** Tests replace the model; production builds it from the person's key, plan or Overlay's relay. */
+  createModel?: (model: PrivateTurnModel) => LanguageModel
   listModels?: typeof listProviderModels
+  listPlanModels?: typeof listPlanModels
   /** Tests replace the connection to Overlay's MCP server. */
   connectOverlayTools?: typeof connectOverlayTools
   /** Tests shrink the context window to exercise compaction. */
@@ -125,8 +127,12 @@ export class PrivateThreadService {
         if (deleted) this.options.emit({ kind: 'threads', owner: request.owner })
         return { deleted }
       }
-      case 'models':
-        return { models: await (this.options.listModels ?? listProviderModels)(request.provider, request.apiKey) }
+      case 'models': {
+        if (request.provider === 'claude' || request.provider === 'chatgpt') {
+          return { models: await (this.options.listPlanModels ?? listPlanModels)(request.provider, request.proxy!) }
+        }
+        return { models: await (this.options.listModels ?? listProviderModels)(request.provider, request.apiKey!) }
+      }
       case 'mcpCheck':
         return await this.localMcp.check(request.server)
       case 'mcpStop':
@@ -176,7 +182,7 @@ export class PrivateThreadService {
         }),
         request.localMcp?.length ? this.localMcp.open(request.localMcp, { signal, approvalMode: request.approvalMode }) : null,
       ])
-      const model = (this.options.createModel ?? createModel)(request.model.provider, request.model.modelId, request.model.apiKey)
+      const model = (this.options.createModel ?? createModel)(request.model)
       const instructions = instructionsFor(request, overlay, localMcp)
       const tools = withLocalMcpTools(withOverlayTools(privateComputerTools({ executor, approvalMode: request.approvalMode, abortSignal: signal }), overlay), localMcp)
       const saved = this.options.store.summary(threadId)
@@ -254,12 +260,17 @@ export class PrivateThreadService {
   }
 }
 
-export function createModel(provider: PrivateModelProvider, modelId: string, apiKey: string): LanguageModel {
-  switch (provider) {
-    case 'anthropic': return createAnthropic({ apiKey })(modelId)
-    case 'openai': return createOpenAI({ apiKey })(modelId)
-    case 'google': return createGoogleGenerativeAI({ apiKey })(modelId)
-    case 'openrouter': return createOpenRouter({ apiKey })(modelId)
+export function createModel(model: PrivateTurnModel): LanguageModel {
+  switch (model.provider) {
+    case 'anthropic': return createAnthropic({ apiKey: model.apiKey })(model.modelId)
+    case 'openai': return createOpenAI({ apiKey: model.apiKey })(model.modelId)
+    case 'google': return createGoogleGenerativeAI({ apiKey: model.apiKey })(model.modelId)
+    case 'openrouter': return createOpenRouter({ apiKey: model.apiKey })(model.modelId)
+    // A signed-in plan, through Overlay Desktop's CLIProxyAPI on this computer: Claude speaks Anthropic's Messages API
+    // and ChatGPT (Codex) OpenAI's Responses API there.
+    case 'claude': return createAnthropic({ baseURL: `${model.proxy.url}/v1`, apiKey: model.proxy.key })(model.modelId)
+    case 'chatgpt': return createOpenAI({ baseURL: `${model.proxy.url}/v1`, apiKey: model.proxy.key }).responses(model.modelId)
+    case 'overlay': return createOverlayRelayModel(model.modelId, model.relay)
   }
 }
 
@@ -318,7 +329,11 @@ function titleFrom(messages: PrivateUIMessage[]): string | null {
 /** Provider errors can echo request details; keep the message and drop anything that looks like a key. */
 function publicError(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
-  return message.replace(/(sk|key|pk|AIza)[-_A-Za-z0-9]{12,}/g, '[redacted]').replace(/ovmcu_[a-z]_[-_.A-Za-z0-9]+/g, '[redacted]').slice(0, 1_000) || 'The model call failed.'
+  return message
+    .replace(/(sk|key|pk|AIza)[-_A-Za-z0-9]{12,}/g, '[redacted]')
+    .replace(/ovmcu_[a-z]_[-_.A-Za-z0-9]+/g, '[redacted]')
+    .replace(/ovlp_[A-Za-z0-9]+/g, '[redacted]')
+    .slice(0, 1_000) || 'The model call failed.'
 }
 
 function toReadable<T>(iterable: AsyncIterable<T>): ReadableStream<T> {

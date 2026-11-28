@@ -2,6 +2,7 @@ import { PrivateThreadService, privateThreadsDatabasePath } from './private-thre
 import { PrivateThreadStore } from './private-threads-store.js'
 import { LOCAL_MCP_FEATURE } from './private-threads-local-mcp.js'
 import {
+  PRIVATE_MODEL_SOURCES,
   PRIVATE_THREADS_PROTOCOL_VERSION,
   type PrivateIpcInbound,
   type PrivateIpcOutbound,
@@ -41,7 +42,7 @@ export async function servePrivateThreads(stateDirectory: string): Promise<void>
   process.on('disconnect', () => void close())
   process.once('SIGTERM', () => void close())
   process.once('SIGINT', () => void close())
-  post({ type: 'ready', protocolVersion: PRIVATE_THREADS_PROTOCOL_VERSION, features: [LOCAL_MCP_FEATURE] })
+  post({ type: 'ready', protocolVersion: PRIVATE_THREADS_PROTOCOL_VERSION, modelSources: PRIVATE_MODEL_SOURCES, features: [LOCAL_MCP_FEATURE] })
   await new Promise<never>(() => undefined)
 }
 

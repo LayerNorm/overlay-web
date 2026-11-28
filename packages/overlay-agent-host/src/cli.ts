@@ -15,7 +15,7 @@ import { assertSupportedNodeVersion } from './runtime-version.js'
 import { HttpAgentControlPlaneClient } from './transport.js'
 import { servePrivateThreads } from './private-threads-ipc.js'
 
-const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.7.0'
+const PACKAGE_SPEC = '@layernorm/overlay-agent-host@0.8.0'
 
 assertSupportedNodeVersion()
 

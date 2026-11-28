@@ -6,7 +6,7 @@ import {
   estimateContextTokens,
   harnessSummaryInstructions,
 } from '@layernorm/overlay-agent-bridge-protocol'
-import type { PrivateModelProvider, PrivateUIMessage } from './private-threads-protocol.js'
+import type { PrivateModelSource, PrivateUIMessage } from './private-threads-protocol.js'
 
 /**
  * Keeps a private thread inside its model's context window with the cloud harness's compaction
@@ -26,8 +26,10 @@ export type ThreadSummary = {
 }
 
 /** Context windows of the model families people bring keys for; anything else gets the cloud's safe default. */
-export function contextWindowFor(provider: PrivateModelProvider, modelId: string): number {
-  const id = provider === 'openrouter' ? modelId : `${provider}/${modelId}`
+export function contextWindowFor(provider: PrivateModelSource, modelId: string): number {
+  const prefix = provider === 'claude' ? 'anthropic' : provider === 'chatgpt' ? 'openai' : provider
+  // OpenRouter and Overlay ids already carry their provider (`anthropic/claude-sonnet-4.6`).
+  const id = provider === 'openrouter' || provider === 'overlay' ? modelId : `${prefix}/${modelId}`
   if (/^anthropic\/claude/.test(id)) return 200_000
   if (/^google\/gemini/.test(id)) return 1_000_000
   if (/^openai\/gpt-4\.1/.test(id)) return 1_000_000

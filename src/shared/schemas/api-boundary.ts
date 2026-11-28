@@ -807,6 +807,12 @@ export const webApiBoundaryDefinitions = [
     summary: 'Get a short-lived MCP token for one private thread turn on Overlay Desktop', tag: 'MCP access',
     publicReference: false,
   },
+  {
+    method: 'POST', path: '/api/v1/private-threads/model-access',
+    schema: { json: z.object({ workspaceId: z.string().min(1).max(256), agentId: z.string().min(1).max(256) }).strict(), response: UnknownResponse },
+    summary: 'Get a short-lived token for Overlay-billed model calls in one private thread turn on Overlay Desktop', tag: 'MCP access',
+    publicReference: false,
+  },
   { method: 'POST', path: '/api/v1/providers/connections/test', schema: { json: ProviderConnectionTestRequest }, summary: 'Test a model provider connection and discover models', tag: 'Model Providers' },
   { method: 'GET', path: '/api/v1/memory', schema: { query: MemoryListQuery }, summary: 'List memories', tag: 'Memory' },
   { method: 'POST', path: '/api/v1/memory', schema: { json: CreateMemoryRequest }, summary: 'Create a memory', tag: 'Memory' },
