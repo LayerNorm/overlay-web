@@ -84,7 +84,7 @@
     "shiki": "^4.4.3"
   },
   "devDependencies": {
-    "@babel/core": "7.29.0",
+    "@babel/core": "7.29.6",
     "@babel/plugin-transform-flow-strip-types": "7.27.1",
     "@babel/plugin-transform-modules-commonjs": "7.28.6",
     "@babel/plugin-transform-react-jsx": "7.28.6",
